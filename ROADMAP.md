@@ -1,4 +1,4 @@
-# Roadmap Réaliste
+# Roadmap
 
 ## V0 : append-only persistance.
 
@@ -48,5 +48,23 @@
 - on Collection distinct(field, query) ;
 - hideIndex(name)  getIndex() ;
 - stats() ;
+- binary serialization for faster parsing ;
+- use file page cache to improve read ops ;
 - read file using page cache ;
-- stats() give { liveSlots, totalSlots, ratioSlots (= (total - live / total)), collections: [ { name, documents: #count, indexes: [{ name type }] } ] }
+- stats() give
+```
+{
+  liveSlots: 0,
+  totalSlots: 0,
+  ratioSlots: 0, // (= (total - live / total)),
+  collections: [
+    {
+      name: '',
+      documents: #count,
+      indexes: [
+        { name: '', type: '' }
+      ]
+    }
+  ]
+}
+```

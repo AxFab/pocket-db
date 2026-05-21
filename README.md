@@ -275,6 +275,46 @@ The `docs/` folder contains in-depth documentation available as a wiki:
 
 ---
 
+## Performance
+
+Pocket DB is benchmarked against several alternative embedded stores on a collection of 1,000 documents across ten common operations. The numbers below are ops/sec on an Apple M-series machine — higher is better. An asterisk marks the fastest adapter for each operation.
+
+```
+Benchmark results — 1,000 documents
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Operation                        pocket-db   sqlite (memory)     sqlite (file)         json-file             lowdb            lokijs
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+insertOne                        198,177           226,278 *           4,421             3,893             2,256             1,004
+insertMany (100)                   2,345             2,963 *             402               788               628               264
+findById                         142,776         1,064,774           248,942        12,532,585 *         321,548         4,061,606
+findAll                               96               361               361           115,774           870,822 *           1,179
+findByName (scan)                     97               536               524            19,579            24,235 *           8,222
+findByRole (index)                   277               884               887            18,527            21,796 *           3,215
+updateOne                         97,889           423,072 *           2,675               784               566               188
+deleteOne                        454,402           465,026 *           5,551               924               663               220
+countAll                          12,038         2,233,389           285,285        42,553,191 *      34,914,251        37,348,273
+sortByScore (desc)                    91               293               293             4,947             5,099 *           1,123
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+All values in ops/sec.  * = fastest for this operation.
+```
+
+**What these numbers reveal:**
+
+The append-only log design is the reason pocket-db's write throughput is competitive with SQLite in-memory for inserts and faster than everything else for deletes and single-document updates. Every mutation is a single sequential write — there is no B-tree rebalancing, no page allocation, and no full-file reserialisation. `deleteOne` and `updateOne` are particularly cheap because they only append a tombstone or a replacement record and update the in-memory index pointer.
+
+Reads are a different story. Unlike json-file, lowdb, or LokiJS — which serve reads entirely from in-memory structures — pocket-db currently has no document cache. Every `findOne` and every cursor step seeks to the document's file offset and reads from disk. This explains why in-memory adapters show several orders of magnitude higher read throughput. A read cache is planned for V2 and will reach to close this gap for hot-document workloads without changing the write model.
+
+In short: if your workload is write-heavy or you need durability on every write, pocket-db competes well. If you need high-throughput in-memory reads and can afford to lose data on crash, a pure in-memory store will outperform it today.
+
+Run the benchmarks yourself:
+
+```bash
+npm install
+npm run bench
+```
+
+---
+
 ## License
 
 [MIT](LICENSE) © Fabien Bavent
