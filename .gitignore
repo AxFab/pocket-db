@@ -1,0 +1,11 @@
+*
+!*/
+
+dist/
+node_modules/
+
+!*.ts
+!*.json
+!*.md
+!*.png
+!.git*
