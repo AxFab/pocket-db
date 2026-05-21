@@ -1,13 +1,17 @@
 *
 !*/
 
-dist/
 node_modules/
+src/
+test/
+benchmarks/
 
+!*.js
 !*.ts
+!*.js.map
+!*.ts.map
 !*.json
 !*.md
 !*.png
-!.git*
 !.npm*
 !LICENSE

@@ -1,52 +1,52 @@
 # Roadmap Réaliste
 
-## V0 : prototype mémoire + persistance append-only.
+## V0 : append-only persistance.
 
-collections ; OK
-documents JSON ; OK
-_id automatique ; OK
-insert/find by id ; OK
-insertOne, insertMany ; OK
-scan complet ; OK
-format record robuste ; OK
-tests de crash partiel ; OK
+- collections ; OK
+- JSON documents ; OK
+- _id automatic ; OK
+- insert/find by id ; OK
+- insertOne, insertMany ; OK
+- full scan ; OK
+- robust record format (crc) ; OK
+- testing partial crash ; OK
 
-## V1 : vraie petite base utilisable.
+## V1 : real and usable little database.
 
-findOne({ field: value }) ; OK
-findOne, find, limit ; OK
-updateOne avec $set, $unset... ; OK
-deleteOne, deleteMany ; OK
-index simple ; OK
-update/delete ; OK
-compaction manuelle ; OK
-TypeScript API propre ;
-benchmarks contre JSON stringify complet ; OK
+- findOne({ field: value }) ; OK
+- findOne, find, limit ; OK
+- updateOne with $set, $unset... ; OK
+- deleteOne, deleteMany ; OK
+- simple index ; OK
+- update/delete ; OK
+- manual compaction ; OK
+- TypeScript API cleanup ; OK
+- benchmarks ; OK
+- find with limited sort ; OK
 
-## V2 : performance et robustesse.
+## V2 : performance and robustness.
 
-find sort limité ;
-index unique ;
-mode durability strict/relaxed ;
-compaction automatique ;
-meilleur query planner ;
-index persistés ;
-snapshots de lecture ;
-batching ;
-scan streaming ;
+- durability mode strict/relaxed ;
+- automatic compaction ;
+- uniq index ;
+- query planner improvment ;
+- persisted index ;
+- reading snapshots ;
+- batching ;
+- scan streaming ;
 
-## V3 : fonctionnalités avancées choisies.
+## V3 : advanced features.
 
-index composés ;
-transactions légères ;
-compression ;
-lock multi-process ;
-moteur natif optionnel ;
+- composed index ;
+- light transactions ;
+- compression ;
+- lock multi-process ;
+- native engine optionnel ;
 
-## Additional
+## additional
 
-on Collection count(query), distinct(field, query) ;
-hideIndex(name)  getIndex() ;
-stats() ;
-read file using page cache ;
-stats() give { liveSlots, totalSlots, ratioSlots (= (total - live / total)), collections: [ { name, documents: #count, indexes: [{ name type }] } ] }
+- on Collection distinct(field, query) ;
+- hideIndex(name)  getIndex() ;
+- stats() ;
+- read file using page cache ;
+- stats() give { liveSlots, totalSlots, ratioSlots (= (total - live / total)), collections: [ { name, documents: #count, indexes: [{ name type }] } ] }
