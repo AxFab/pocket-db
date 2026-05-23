@@ -157,7 +157,7 @@ Persisted index snapshots that eliminate the rebuild cost are planned for V2.
 `collection.createIndex(field, { type })` writes an `idx1` record and then
 immediately rebuilds the new index contents from the current primary index.
 Creating an index on a collection with many existing documents is therefore an
-O(N) disk-read operation at call time.
+O(N) disk read operation at call time.
 
 If `createIndex` is called again for the same field and type, no new `idx1`
 record is written; the existing in-memory index is returned.
