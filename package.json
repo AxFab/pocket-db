@@ -1,6 +1,6 @@
 {
   "name": "@axfab/pocket-db",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An embedded document database for Node.js, designed around a small file-backed storage engine.",
   "type": "module",
   "main": "./dist/src/index.js",
@@ -27,7 +27,9 @@
     "database",
     "embedded",
     "nosql",
-    "typescript"
+    "typescript",
+    "document-store",
+    "append-only"
   ],
   "license": "MIT",
   "homepage": "https://pocket-db.axfab.net/",

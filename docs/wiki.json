@@ -1,0 +1,104 @@
+{
+  "name": "pocket-db",
+  "title": "Pocket DB",
+  "host": "pocket-db.axfab.net",
+  "keywords": ["nodejs", "typescript", "mongodb", "nosql", "sqlite", "embedded-database", "nosql-database", "document-store", "append-only", "electron"],
+  "npm": "@axfab/pocket-db",
+  "github": "axfab/pocket-db",
+  "image": "img/pocket-db.png",
+  "colorHue": 150,
+  "top": [
+    {
+      "id": "index.html",
+      "label": "Home",
+      "src": "README.md",
+      "icon": "<path d=\"M8 1a7 7 0 100 14A7 7 0 008 1zM7 4h2v2H7V4zm0 3h2v5H7V7z\"/>",
+      "type": "SoftwareApplication",
+      "title": "Pocket DB — Embedded single-file NoSQL for Node.js",
+      "description": "An embedded, single-file NoSQL database for Node.js — zero dependencies, append-only storage, MongoDB-compatible API."
+    }
+  ],
+  "docs": [
+    {
+      "id": "file-format.html",
+      "label": "File Format",
+      "src": "docs/file-format.md",
+      "icon": "<path d=\"M3 2h7l3 3v9H3V2zm7 0v3h3\"/>",
+      "type": "TechArticle",
+      "title": "Binary File Format — Pocket DB",
+      "description": "Deep dive into Pocket DB's append-only binary file format: record headers, byte layout, and on-disk encoding."
+    },
+    {
+      "id": "storage.html",
+      "label": "Storage Semantics",
+      "src": "docs/storage.md",
+      "icon": "<path d=\"M2 3h12v3H2V3zm0 5h12v3H2V8zm0 5h12v2H2v-2z\"/>",
+      "type": "TechArticle",
+      "title": "Storage Semantics — Pocket DB",
+      "description": "How Pocket DB handles durability, crash recovery, fsync, and write ordering in its append-only storage log."
+    },
+    {
+      "id": "query.html",
+      "label": "Query & Update Model",
+      "src": "docs/query.md",
+      "icon": "<path d=\"M11.74 10.33a6 6 0 10-1.41 1.41l3.18 3.19 1.42-1.42-3.19-3.18zM6 10a4 4 0 110-8 4 4 0 010 8z\"/>",
+      "type": "TechArticle",
+      "title": "Query & Update Model — Pocket DB",
+      "description": "Reference for Pocket DB's MongoDB-compatible filter operators, find, update, and delete API."
+    },
+    {
+      "id": "indexes.html",
+      "label": "Indexes",
+      "src": "docs/indexes.md",
+      "icon": "<path d=\"M2 2h4v4H2V2zm0 8h4v4H2v-4zm8-8h4v4h-4V2zm0 8h4v4h-4v-4z\"/>",
+      "type": "TechArticle",
+      "title": "Indexing System — Pocket DB",
+      "description": "How Pocket DB builds and uses secondary indexes for fast field lookups and sorted queries."
+    },
+    {
+      "id": "compact.html",
+      "label": "Compaction",
+      "src": "docs/compact.md",
+      "icon": "<path d=\"M3 2h10l1 4H2L3 2zm0 5h10v7H3V7z\"/>",
+      "type": "TechArticle",
+      "title": "Compaction Algorithm — Pocket DB",
+      "description": "How db.compact() rewrites the Pocket DB file to reclaim space from deleted and updated records in a single forward pass."
+    }
+  ],
+  "bottom": [
+    {
+      "id": "license.html",
+      "label": "License",
+      "src": "LICENSE",
+      "icon": "<path d=\"M8 0a8 8 0 100 16A8 8 0 008 0zM4.5 7.5h7v1h-7v-1z\"/>",
+      "type": "WebPage",
+      "title": "MIT License — Pocket DB",
+      "description": "Pocket DB is released under the MIT License — free to use, modify, and distribute."
+    },
+    {
+      "id": "contributing.html",
+      "label": "Contributing",
+      "src": "CONTRIBUTING.md",
+      "icon": "<path d=\"M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.88-1.17-.88-1.17-.72-.49.05-.48.05-.48.8.06 1.22.82 1.22.82.7 1.2 1.85.86 2.3.65.07-.51.27-.86.5-1.06-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.67 7.67 0 012 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0016 8c0-4.42-3.58-8-8-8z\"/>",
+      "type": "WebPage",
+      "title": "Contributing — Pocket DB",
+      "description": "How to contribute to @axfab/pocket-db: local setup, coding standards, and pull request guidelines."
+    }
+  ],
+  "extra": [
+    {
+      "id": "roadmap.html",
+      "label": "Roadmap",
+      "src": "ROADMAP.md",
+      "title": "Roadmap — Pocket DB",
+      "description": "Planned features and upcoming improvements for the @axfab/pocket-db npm package."
+    },
+    {
+      "id": "claude.html",
+      "label": "Claude instructions",
+      "src": "CLAUDE.md",
+      "title": "Claude instructions — Pocket DB",
+      "description": "Documentation for the npm @axfab/pocket-db package"
+    }
+  ]
+}

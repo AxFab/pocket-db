@@ -1,4 +1,4 @@
-export { open } from "./api/open.js";
+export { open, pocketDb } from "./api/open.js";
 export type {
   Collection,
   CreateIndexOptions,
@@ -9,6 +9,7 @@ export type {
   DeleteOneResult,
   DropIndexResult,
   DropResult,
+  IndexInfo,
   InsertManyResult,
   InsertOneResult,
   OpenOptions,

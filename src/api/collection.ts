@@ -60,6 +60,17 @@ export class PocketCollection implements Collection {
     return this.indexManager.definitions;
   }
 
+  getIndexes(): { name: string; type: string }[] {
+    return this.indexManager.definitions.map((def) => ({
+      name: def.field,
+      type: def.type
+    }));
+  }
+
+  existsIndex(name: string): boolean {
+    return this.indexManager.definitions.some((def) => def.field === name);
+  }
+
   insertOne(document: Record<string, unknown>): InsertOneResult {
     this.assertNotDropped();
     const documentId = this.createDocumentId(document._id);

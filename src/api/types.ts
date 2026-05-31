@@ -15,6 +15,16 @@ export interface Database {
   collection(name: string): Collection;
 
   /**
+   * Returns the names of all collections currently registered in the database.
+   */
+  getCollections(): string[];
+
+  /**
+   * Returns `true` if a collection with the given name exists.
+   */
+  existsCollection(name: string): boolean;
+
+  /**
    * Rewrites the database file in a single forward pass, discarding dead
    * records (deleted/updated documents, dropped collections, dropped indexes,
    * transaction boundaries). Updates all in-memory primary indexes to point to
@@ -31,9 +41,27 @@ export interface Database {
   close(): void;
 }
 
+/** Descriptor returned by {@link Collection.getIndexes}. */
+export interface IndexInfo {
+  /** The indexed field name. */
+  name: string;
+  /** Index type: `"string"` or `"number"`. */
+  type: string;
+}
+
 export interface Collection {
   readonly name: string;
   readonly indexes: readonly SecondaryIndexDefinition[];
+
+  /**
+   * Returns a list of all secondary indexes defined on this collection.
+   */
+  getIndexes(): IndexInfo[];
+
+  /**
+   * Returns `true` if a secondary index on `name` exists.
+   */
+  existsIndex(name: string): boolean;
 
   insertOne(document: Record<string, unknown>): InsertOneResult;
 

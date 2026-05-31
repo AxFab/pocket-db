@@ -1,3 +1,4 @@
+
 <p align="center">
   <img src="docs/pocket-db.png" alt="pocket-db" width="260" />
 </p>
@@ -10,11 +11,17 @@
   <a href="https://www.npmjs.com/package/@axfab/pocket-db"><img src="https://img.shields.io/npm/v/@axfab/pocket-db.svg" alt="npm version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node ≥ 18" />
+  <a href="https://npmcharts.com/compare/@axfab/pocket-db?minimal=true"><img src="https://img.shields.io/npm/dm/@axfab/pocket-db.svg" alt="npm downloads" /></a>
 </p>
 
 ---
 
 Pocket DB stores everything in a **single append-only file** — no server, no daemon, no setup. You open a file, work with collections of JSON documents, and close. That is the whole model.
+
+- ✓ Single file
+- ✓ Mongo-like API
+- ✓ Zero runtime dependencies
+- ✓ Fast append-only writes
 
 It is inspired by SQLite (one file, embedded) and MongoDB (document model, familiar API), but intentionally small. The core constraint — *never reserialise the entire database on a write* — means every insert, update and delete is a fast append. Reading a document means seeking to its offset and reading only those bytes.
 
@@ -27,7 +34,7 @@ Not a fit for: multi-process concurrent writers, datasets requiring complex aggr
 ## Install
 
 ```bash
-npm install pocket-db
+npm install @axfab/pocket-db
 ```
 
 No native binaries. No optional dependencies. Pure TypeScript compiled to ESM.
@@ -37,9 +44,9 @@ No native binaries. No optional dependencies. Pure TypeScript compiled to ESM.
 ## Quick start
 
 ```ts
-import { open } from "pocket-db";
+import { pocketDb } from "pocket-db";
 
-const db = open({ path: "./data.pdb" });
+const db = pocketDb("./data.pdb");
 const users = db.collection("users");
 
 // Insert
@@ -81,13 +88,26 @@ Every document gets a `_id`: a 24-character lowercase hex string (12-byte Object
 
 ## API
 
+### Opening a database
+
+```ts
+import { pocketDb } from "pocket-db";
+const db = pocketDb("./data.pdb", { /* future options */ });
+```
+
+You can also merge both arguments by setting the property `path` of the options object. Both forms are equivalent. It's a convenience for callers who prefer a shorter call site.
+
+```ts
+const db = pocketDb({ path: "./data.pdb" });
+```
+
 ### Database
 
 ```ts
-const db = open({ path?: string });
-
 db.collection(name: string): Collection
-db.compact(): void          // reclaim space from dead records
+db.getCollections(): string[]              // names of all registered collections
+db.existsCollection(name: string): boolean
+db.compact(): void                         // reclaim space from dead records
 db.close(): void
 ```
 
@@ -112,6 +132,8 @@ collection.deleteMany(query?): DeleteManyResult
 
 collection.createIndex(field, { type: "string" | "number" }): CreateIndexResult
 collection.dropIndex(field): DropIndexResult
+collection.getIndexes(): { name: string; type: string }[]
+collection.existsIndex(name: string): boolean
 collection.drop(): DropResult
 ```
 
@@ -251,13 +273,14 @@ Pocket DB is designed for **single-process use**. Multiple concurrent writers on
 Pocket DB is written in TypeScript and ships its own type declarations. All public types are exported from the package root:
 
 ```ts
+import { open, pocketDb } from "pocket-db";
 import type {
   Database, Collection, Cursor,
   InsertOneResult, InsertManyResult,
   UpdateResult, ReplaceOneResult,
   DeleteOneResult, DeleteManyResult,
   CreateIndexResult, DropIndexResult, DropResult,
-  OpenOptions, SortDirection
+  IndexInfo, OpenOptions, SortDirection
 } from "pocket-db";
 ```
 

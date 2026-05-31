@@ -198,16 +198,26 @@ Exposed as 24-character lowercase hex strings. When the user supplies `_id` on i
 
 All exports are from `src/index.ts`:
 ```ts
-export { open } from "./api/open.js";
+export { open, pocketDb } from "./api/open.js";
 export type {
   Collection, CreateIndexOptions, CreateIndexResult, Cursor, Database,
   DeleteManyResult, DeleteOneResult, DropIndexResult, DropResult,
-  InsertManyResult, InsertOneResult, OpenOptions, ReplaceOneResult, UpdateResult
+  IndexInfo, InsertManyResult, InsertOneResult, OpenOptions, ReplaceOneResult, UpdateResult
 } from "./api/types.js";
 export type { SortDirection } from "./search/sort.js";
 ```
 
+`pocketDb` is a convenience alias for `open()`. When its first argument is a `string` it is treated as `options.path`; the optional second argument accepts the same `OpenOptions` minus `path`. Both call sites are equivalent:
+```ts
+open({ path: "./data.pdb" })
+pocketDb("./data.pdb")
+```
+
 `Collection` interface does **not** expose `id: Buffer` or `existsId()` — those are internal to `PocketCollection`. Tests that need the internal collection id (low-level storage tests) cast to `(collection as any).id`.
+
+`Database` exposes `getCollections(): string[]` and `existsCollection(name): boolean` for introspection without side-effects (unlike `collection()` which creates on first access).
+
+`Collection` exposes `getIndexes(): IndexInfo[]` (where `IndexInfo = { name: string; type: string }`) and `existsIndex(name): boolean` for index introspection.
 
 ### TypeScript Configuration
 
@@ -242,6 +252,9 @@ export type { SortDirection } from "./search/sort.js";
 - Manual compaction (`db.compact()`)
 - Single-process file lock (`.lock` file with PID + stale detection)
 - Bulk-read optimization for multi-candidate scans
+- `pocketDb(path, options?)` convenience alias for `open()`
+- `Database.getCollections()` / `Database.existsCollection(name)`
+- `Collection.getIndexes()` / `Collection.existsIndex(name)`
 - Clean public API surface and TypeScript exports
 - Benchmarks vs. SQLite (in-memory and file-backed) and JSON file
 

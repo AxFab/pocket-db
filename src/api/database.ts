@@ -37,6 +37,14 @@ export class PocketDatabase implements Database {
     this.loadCollections();
   }
 
+  getCollections(): string[] {
+    return Array.from(this.collectionsByName.keys());
+  }
+
+  existsCollection(name: string): boolean {
+    return this.collectionsByName.has(name);
+  }
+
   collection(name: string): Collection {
     const existing = this.collectionsByName.get(name);
 

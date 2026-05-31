@@ -8,6 +8,7 @@ node_modules/
 !*.json
 !*.md
 !*.png
+!*.svg
 !.git*
 !.npm*
 !LICENSE
