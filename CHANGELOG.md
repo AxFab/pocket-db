@@ -51,6 +51,20 @@ document store in a Node.js application.
 
 ---
 
+## [0.1.1] — 2026-05-31
+
+Small fixes of the first release. README and a few utilities functions.
+
+- Add alias `pocketDb()` unstead of `open()`
+- `db.getCollections(): string[]`
+- `db.existsCollection(name: string): boolean`
+- `col.indexes: readonly SecondaryIndexDefinition[]`
+- `col.getIndexes(): { name: string; type: string }[]`
+- `col.existsIndex(name: string): boolean`
+
+
+---
+
 ## [Unreleased]
 
 See [ROADMAP.md](ROADMAP.md) for planned V2 and V3 features.
