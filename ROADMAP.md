@@ -68,3 +68,28 @@
   ]
 }
 ```
+
+## Update operator
+
+https://www.mongodb.com/docs/manual/reference/mql/update/#std-label-update-operators
+
+ - `$currentDate`. Sets the value of a field to current date. We need an options to know the format
+ - `$mul`. Multiplies the value of the field by the specified amount.
+ - `$rename` Renames a field.
+
+ - `$addToSet` Adds elements to an array only if they do not already exist in the set.
+ - `$pop` Removes the first or last item of an array.
+ - `$pull/pullAll` Removes all array elements that match a specified query.
+ - ``
+
+## Sorting
+
+https://www.mongodb.com/docs/manual/reference/method/cursor.sort/
+
+
+## Predicate clause
+
+https://www.mongodb.com/docs/manual/reference/mql/query-predicates/
+
+- `$type` Matches documents if a field is of the specified type.
+- `$regex` Matches documents where values match a specified regular expression.
