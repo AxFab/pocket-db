@@ -3,22 +3,27 @@
   "version": "0.1.1",
   "description": "An embedded document database for Node.js, designed around a small file-backed storage engine.",
   "type": "module",
-  "main": "./dist/src/index.js",
+  "main": "./dist/cjs/src/index.js",
+  "module": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
+      "import": "./dist/src/index.js",
+      "require": "./dist/cjs/src/index.js"
     }
   },
   "files": [
     "dist/src",
+    "dist/cjs/src",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build:esm": "tsc -p tsconfig.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json && echo '{\"type\":\"commonjs\"}' > dist/cjs/src/package.json",
+    "build": "npm run build:esm && npm run build:cjs",
     "test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
     "bench": "npm run build && node dist/benchmarks/bench.js",
     "prepublishOnly": "npm run build"
