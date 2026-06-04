@@ -1,5 +1,6 @@
 import type { DocumentEncoder } from "./document-encoder.js";
-import { decodeU29, encodeU29 } from "../u29.js";
+import { decodeU29 } from "../u29.js";
+import { WriteBuffer } from "./write-buffer.js";
 
 // ---------------------------------------------------------------------------
 // AMF3 type markers (subset used by pocket-db)
@@ -43,15 +44,14 @@ const DYNAMIC_OBJECT_TRAIT = 0x0b;
 // ---------------------------------------------------------------------------
 
 /**
- * Encode a bare AMF3 string (no type marker): U29 header + UTF-8 bytes.
+ * Write a bare AMF3 string (no type marker) into `wb`: U29 header + UTF-8 bytes.
  *
  * Used for object keys, class names, and associative array keys.
- * The empty string encodes to a single byte (0x01).
+ * The empty string writes a single byte (0x01).
  */
-function encodeRawString(str: string): Buffer {
-  const bytes = Buffer.from(str, "utf8");
-  // Inline flag: (byteLength << 1) | 1
-  return Buffer.concat([encodeU29((bytes.length << 1) | 1), bytes]);
+function writeRawString(str: string, wb: WriteBuffer): void {
+  wb.writeU29((WriteBuffer.utf8ByteLength(str) << 1) | 1);
+  wb.writeUtf8(str);
 }
 
 /**
@@ -72,74 +72,59 @@ function decodeRawString(buf: Buffer, offset: number): { value: string; bytesRea
 }
 
 // ---------------------------------------------------------------------------
-// Value encoding
+// Value encoding — WriteBuffer-based (no intermediate Buffer allocations)
 // ---------------------------------------------------------------------------
 
-function encodeValue(value: unknown): Buffer {
+function writeValue(value: unknown, wb: WriteBuffer): void {
   if (value === null || value === undefined) {
-    return Buffer.from([NULL_MARKER]);
+    wb.writeByte(NULL_MARKER);
+    return;
   }
 
   if (typeof value === "boolean") {
-    return Buffer.from([value ? TRUE_MARKER : FALSE_MARKER]);
+    wb.writeByte(value ? TRUE_MARKER : FALSE_MARKER);
+    return;
   }
 
   if (typeof value === "number") {
     if (Number.isInteger(value) && value >= AMF3_INT_MIN && value <= AMF3_INT_MAX) {
       // Encode as 29-bit signed integer.  Negative values are stored in
       // two's-complement within the 29-bit range, i.e. value + 2^29.
-      const u29 = value < 0 ? value + 0x20000000 : value;
-      return Buffer.concat([Buffer.from([INTEGER_MARKER]), encodeU29(u29)]);
+      wb.writeByte(INTEGER_MARKER);
+      wb.writeU29(value < 0 ? value + 0x20000000 : value);
+    } else {
+      // Floating-point or integer outside the 29-bit range → double (big-endian).
+      wb.writeByte(DOUBLE_MARKER);
+      wb.writeDoubleBE(value);
     }
-
-    // Floating-point or integer outside the 29-bit range → double.
-    const buf = Buffer.alloc(9);
-    buf[0] = DOUBLE_MARKER;
-    buf.writeDoubleBE(value, 1); // AMF3 uses big-endian IEEE 754
-    return buf;
+    return;
   }
 
   if (typeof value === "string") {
-    // AMF3 string value: type marker + raw string
-    return Buffer.concat([Buffer.from([STRING_MARKER]), encodeRawString(value)]);
+    wb.writeByte(STRING_MARKER);
+    writeRawString(value, wb);
+    return;
   }
 
   if (Array.isArray(value)) {
-    return encodeArray(value);
+    // Dense array: ARRAY_MARKER + U29 count + empty assoc terminator + elements.
+    wb.writeByte(ARRAY_MARKER);
+    wb.writeU29((value.length << 1) | 1);
+    wb.writeByte(0x01); // empty string key — terminates associative section
+    for (const item of value) writeValue(item, wb);
+    return;
   }
 
   if (typeof value === "object") {
-    return encodeObject(value as Record<string, unknown>);
+    writeObject(value as Record<string, unknown>, wb);
+    return;
   }
 
   throw new Error(`Amf3DocumentEncoder: unsupported value type "${typeof value}".`);
 }
 
 /**
- * Encode a JavaScript array as an AMF3 dense array (no associative pairs).
- *
- * Layout:
- *   0x09          — ARRAY_MARKER
- *   U29           — (length << 1) | 1  (inline, not a reference)
- *   0x01          — empty string key   (terminates the associative part)
- *   value…        — one typed AMF3 value per dense element
- */
-function encodeArray(arr: unknown[]): Buffer {
-  const parts: Buffer[] = [
-    Buffer.from([ARRAY_MARKER]),
-    encodeU29((arr.length << 1) | 1),
-    Buffer.from([0x01]) // empty associative section
-  ];
-
-  for (const item of arr) {
-    parts.push(encodeValue(item));
-  }
-
-  return Buffer.concat(parts);
-}
-
-/**
- * Encode a plain object as an anonymous dynamic AMF3 object.
+ * Write a plain object as an anonymous dynamic AMF3 object into `wb`.
  *
  * Layout:
  *   0x0a          — OBJECT_MARKER
@@ -150,22 +135,18 @@ function encodeArray(arr: unknown[]): Buffer {
  *
  * Undefined property values are silently omitted (matches JSON behaviour).
  */
-function encodeObject(obj: Record<string, unknown>): Buffer {
-  const parts: Buffer[] = [
-    Buffer.from([OBJECT_MARKER]),
-    encodeU29(DYNAMIC_OBJECT_TRAIT),
-    Buffer.from([0x01]) // anonymous class name (empty string)
-  ];
+function writeObject(obj: Record<string, unknown>, wb: WriteBuffer): void {
+  wb.writeByte(OBJECT_MARKER);
+  wb.writeU29(DYNAMIC_OBJECT_TRAIT);
+  wb.writeByte(0x01); // anonymous class name (empty string)
 
   for (const [key, value] of Object.entries(obj)) {
     if (value === undefined) continue; // skip undefined (matches JSON.stringify)
-    parts.push(encodeRawString(key));
-    parts.push(encodeValue(value));
+    writeRawString(key, wb);
+    writeValue(value, wb);
   }
 
-  parts.push(Buffer.from([0x01])); // empty key terminates dynamic section
-
-  return Buffer.concat(parts);
+  wb.writeByte(0x01); // empty key terminates dynamic section
 }
 
 // ---------------------------------------------------------------------------
@@ -346,7 +327,9 @@ function decodeObject(buf: Buffer, offset: number): { value: Record<string, unkn
  */
 export class Amf3DocumentEncoder implements DocumentEncoder {
   encode(document: Record<string, unknown>): Buffer {
-    return encodeObject(document);
+    const wb = new WriteBuffer();
+    writeObject(document, wb);
+    return wb.toBuffer();
   }
 
   decode(bytes: Buffer): Record<string, unknown> {

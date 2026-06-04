@@ -1,4 +1,5 @@
 import type { DocumentEncoder } from "./document-encoder.js";
+import { WriteBuffer } from "./write-buffer.js";
 
 // ---------------------------------------------------------------------------
 // BSON type codes (subset used by pocket-db)
@@ -11,118 +12,108 @@ const TYPE_ARRAY = 0x04;    // BSON document with "0", "1", … keys
 const TYPE_BOOLEAN = 0x08;  // 0x00 = false, 0x01 = true
 const TYPE_NULL = 0x0a;     // no value bytes
 const TYPE_INT32 = 0x10;    // 32-bit signed little-endian
-const TYPE_INT64 = 0x12;    // 64-bit signed little-endian (used for safe integers outside int32 range)
+const TYPE_INT64 = 0x12;    // 64-bit signed little-endian (safe integers outside int32 range)
 
 // ---------------------------------------------------------------------------
-// Encoding helpers
+// Encoding — single-pass WriteBuffer approach
+//
+// Each element is written directly into a pre-allocated WriteBuffer:
+//   type byte  →  cstring key (UTF-8 + 0x00)  →  value bytes
+//
+// BSON documents embed their own byte length as the first int32.  Since the
+// length is not known until the body has been written, we reserve 4 bytes,
+// write the body, then backpatch the size with `patchInt32LE`.
 // ---------------------------------------------------------------------------
 
-/** Encode a single document value.  Returns { type, bytes }. */
-function encodeValue(value: unknown): { type: number; bytes: Buffer } {
+/** Write a null-terminated UTF-8 key string (BSON cstring format). */
+function writeCString(key: string, wb: WriteBuffer): void {
+  wb.writeUtf8(key);
+  wb.writeByte(0x00);
+}
+
+/**
+ * Write one BSON element (type + key + value) directly into `wb`.
+ *
+ * Arrays are encoded as BSON documents with string-ified integer keys,
+ * which is the standard BSON representation.
+ */
+function writeElement(key: string, value: unknown, wb: WriteBuffer): void {
   if (value === null || value === undefined) {
-    return { type: TYPE_NULL, bytes: Buffer.alloc(0) };
+    wb.writeByte(TYPE_NULL);
+    writeCString(key, wb);
+    return; // null has no value bytes
   }
 
   if (typeof value === "boolean") {
-    const buf = Buffer.alloc(1);
-    buf[0] = value ? 0x01 : 0x00;
-    return { type: TYPE_BOOLEAN, bytes: buf };
+    wb.writeByte(TYPE_BOOLEAN);
+    writeCString(key, wb);
+    wb.writeByte(value ? 0x01 : 0x00);
+    return;
   }
 
   if (typeof value === "number") {
     if (Number.isInteger(value) && value >= -2147483648 && value <= 2147483647) {
-      // Fits in int32 — more compact than double.
-      const buf = Buffer.alloc(4);
-      buf.writeInt32LE(value, 0);
-      return { type: TYPE_INT32, bytes: buf };
+      wb.writeByte(TYPE_INT32);
+      writeCString(key, wb);
+      wb.writeInt32LE(value);
+    } else if (Number.isInteger(value) && Number.isSafeInteger(value)) {
+      wb.writeByte(TYPE_INT64);
+      writeCString(key, wb);
+      wb.writeBigInt64LE(BigInt(value));
+    } else {
+      wb.writeByte(TYPE_DOUBLE);
+      writeCString(key, wb);
+      wb.writeDoubleLE(value);
     }
-
-    if (Number.isInteger(value) && Number.isSafeInteger(value)) {
-      // Safe integer outside int32 range — use int64.
-      const buf = Buffer.alloc(8);
-      buf.writeBigInt64LE(BigInt(value), 0);
-      return { type: TYPE_INT64, bytes: buf };
-    }
-
-    // Floating-point or non-finite number.
-    const buf = Buffer.alloc(8);
-    buf.writeDoubleLE(value, 0);
-    return { type: TYPE_DOUBLE, bytes: buf };
+    return;
   }
 
   if (typeof value === "string") {
-    const strBuf = Buffer.from(value, "utf8");
-    // Format: int32 (byte length including null terminator) + bytes + 0x00
-    const buf = Buffer.alloc(4 + strBuf.length + 1);
-    buf.writeInt32LE(strBuf.length + 1, 0);
-    strBuf.copy(buf, 4);
-    buf[4 + strBuf.length] = 0x00;
-    return { type: TYPE_STRING, bytes: buf };
+    wb.writeByte(TYPE_STRING);
+    writeCString(key, wb);
+    const byteLen = WriteBuffer.utf8ByteLength(value);
+    wb.writeInt32LE(byteLen + 1); // length includes the null terminator
+    wb.writeUtf8(value);
+    wb.writeByte(0x00);
+    return;
   }
 
   if (Array.isArray(value)) {
-    // BSON arrays are encoded as documents with string-ified integer keys.
-    const arrayDoc: Record<string, unknown> = {};
-    value.forEach((item, i) => {
-      arrayDoc[String(i)] = item;
+    wb.writeByte(TYPE_ARRAY);
+    writeCString(key, wb);
+    writeDocumentBody(wb, () => {
+      for (let i = 0; i < value.length; i++) {
+        writeElement(String(i), value[i], wb);
+      }
     });
-    return { type: TYPE_ARRAY, bytes: encodeDocument(arrayDoc) };
+    return;
   }
 
   if (typeof value === "object") {
-    return { type: TYPE_DOCUMENT, bytes: encodeDocument(value as Record<string, unknown>) };
+    wb.writeByte(TYPE_DOCUMENT);
+    writeCString(key, wb);
+    writeDocumentBody(wb, () => {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        writeElement(k, v, wb);
+      }
+    });
+    return;
   }
 
   throw new Error(`BsonDocumentEncoder: unsupported value type "${typeof value}".`);
 }
 
 /**
- * Encode a plain object as a BSON document.
- *
- * Layout:
- *   int32   total_size  (4 bytes, LE, includes itself and the trailing 0x00)
- *   element...
- *   0x00    terminator
- *
- * Each element:
- *   byte    type
- *   cstring key  (UTF-8 + 0x00)
- *   bytes   value
+ * Write a BSON document frame: reserve 4 bytes for the size, invoke
+ * `writeBody` to write all elements, append the 0x00 terminator, then
+ * backpatch the size field with the actual byte count.
  */
-function encodeDocument(doc: Record<string, unknown>): Buffer {
-  const elements: Buffer[] = [];
-
-  for (const [key, value] of Object.entries(doc)) {
-    const { type, bytes: valueBytes } = encodeValue(value);
-
-    // key as null-terminated UTF-8
-    const keyBuf = Buffer.from(key, "utf8");
-    const element = Buffer.alloc(1 + keyBuf.length + 1 + valueBytes.length);
-    let offset = 0;
-    element[offset++] = type;
-    keyBuf.copy(element, offset);
-    offset += keyBuf.length;
-    element[offset++] = 0x00; // null terminator for key
-    valueBytes.copy(element, offset);
-
-    elements.push(element);
-  }
-
-  // total = int32 size field (4) + all element bytes + terminator (1)
-  const bodyLength = elements.reduce((sum, e) => sum + e.length, 0);
-  const totalSize = 4 + bodyLength + 1;
-
-  const result = Buffer.alloc(totalSize);
-  result.writeInt32LE(totalSize, 0);
-
-  let pos = 4;
-  for (const element of elements) {
-    element.copy(result, pos);
-    pos += element.length;
-  }
-  result[pos] = 0x00; // document terminator
-
-  return result;
+function writeDocumentBody(wb: WriteBuffer, writeBody: () => void): void {
+  const sizePos = wb.offset;
+  wb.writeInt32LE(0); // placeholder — will be patched below
+  writeBody();
+  wb.writeByte(0x00); // document terminator
+  wb.patchInt32LE(sizePos, wb.offset - sizePos);
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +234,13 @@ function decodeDocument(buf: Buffer, start: number): DecodeResult {
  */
 export class BsonDocumentEncoder implements DocumentEncoder {
   encode(document: Record<string, unknown>): Buffer {
-    return encodeDocument(document);
+    const wb = new WriteBuffer();
+    writeDocumentBody(wb, () => {
+      for (const [key, value] of Object.entries(document)) {
+        writeElement(key, value, wb);
+      }
+    });
+    return wb.toBuffer();
   }
 
   decode(bytes: Buffer): Record<string, unknown> {
