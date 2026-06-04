@@ -16,6 +16,7 @@ import {
 } from "../storage/constants.js";
 import { assertObjectIdHex, createObjectId, objectIdFromHex } from "../storage/document-id.js";
 import { decodePutDocumentPayload, encodeDeleteDocumentPayload, encodePutDocumentPayload } from "../storage/document-operation.js";
+import type { DocumentEncoder } from "../storage/encoding/document-encoder.js";
 import type { FileStorage } from "../storage/file-storage.js";
 import { encodeCreateIndexPayload, encodeDropIndexPayload } from "../storage/index-operation.js";
 import { encodeDropCollectionPayload } from "../storage/collection-operation.js";
@@ -53,7 +54,8 @@ export class PocketCollection implements Collection {
     readonly id: Buffer,
     readonly name: string,
     private readonly storage: FileStorage,
-    private readonly onDrop: () => void
+    private readonly onDrop: () => void,
+    private readonly encoder: DocumentEncoder
   ) {}
 
   get indexes(): readonly SecondaryIndexDefinition[] {
@@ -265,7 +267,8 @@ export class PocketCollection implements Collection {
       this.storage,
       plan.residualQuery,
       plan.candidates,
-      bulkBuffer
+      bulkBuffer,
+      this.encoder
     );
   }
 
@@ -491,11 +494,10 @@ export class PocketCollection implements Collection {
   private appendPutDocument(documentId: Buffer, document: Record<string, unknown>): number {
     return this.storage.appendOperation(
       PUT_DOCUMENT_OPERATION,
-      encodePutDocumentPayload({
-        collectionId: this.id,
-        documentId,
-        document
-      })
+      encodePutDocumentPayload(
+        { collectionId: this.id, documentId, document },
+        this.encoder
+      )
     );
   }
 
@@ -578,7 +580,7 @@ export class PocketCollection implements Collection {
       throw new Error("Invalid index rebuild candidate: expected a put document operation.");
     }
 
-    return decodePutDocumentPayload(operation.payload).document;
+    return decodePutDocumentPayload(operation.payload, this.encoder).document;
   }
 }
 

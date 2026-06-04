@@ -6,21 +6,25 @@ import {
   encodeDeleteDocumentPayload,
   encodePutDocumentPayload
 } from "../src/storage/document-operation.js";
+import { jsonEncoder } from "../src/storage/encoding/json-encoder.js";
 
 describe("put document operation payload", () => {
   it("stores collection id, document id, and a U29-sized JSON document", () => {
     const collectionId = Buffer.from([1, 2, 3, 4]);
     const documentId = Buffer.from("00112233445566778899aabb", "hex");
-    const payload = encodePutDocumentPayload({
-      collectionId,
-      documentId,
-      document: {
-        _id: documentId.toString("hex"),
-        name: "Ada"
-      }
-    });
+    const payload = encodePutDocumentPayload(
+      {
+        collectionId,
+        documentId,
+        document: {
+          _id: documentId.toString("hex"),
+          name: "Ada"
+        }
+      },
+      jsonEncoder
+    );
 
-    const decoded = decodePutDocumentPayload(payload);
+    const decoded = decodePutDocumentPayload(payload, jsonEncoder);
 
     assert.equal(payload.byteLength % 4, 0);
     assert.deepEqual(decoded.collectionId, collectionId);

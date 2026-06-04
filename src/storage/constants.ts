@@ -4,12 +4,17 @@ export const MAGIC_HEADER_BYTES = Buffer.from(MAGIC_HEADER, "utf8");
 // Format header — 4 bytes immediately after the magic, mandatory.
 // byte 0: file format major version (breaking changes)
 // byte 1: file format minor version (backward-compatible additions)
-// byte 2: serialization format ASCII char ('j' = JSON)
+// byte 2: serialization format ASCII char ('j' = JSON, 'b' = BSON)
 // byte 3: serialization format version
 export const FORMAT_HEADER_BYTES = 4;
 export const FORMAT_MAJOR_VERSION = 0;
 export const FORMAT_MINOR_VERSION = 1;
+/** Default serialization format written into new files: JSON (`'j'`). */
 export const SERIALIZATION_FORMAT = "j".charCodeAt(0);
+/** BSON serialization format byte (`'b'`). */
+export const SERIALIZATION_FORMAT_BSON = "b".charCodeAt(0);
+/** AMF3 serialization format byte (`'a'`). */
+export const SERIALIZATION_FORMAT_AMF3 = "a".charCodeAt(0);
 export const SERIALIZATION_VERSION = 0;
 
 // Total file header = magic (8) + format header (4)

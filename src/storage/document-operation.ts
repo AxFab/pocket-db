@@ -1,6 +1,7 @@
 import { alignTo4Bytes } from "./padding.js";
 import { assertCollectionId } from "./collection-operation.js";
 import { DOCUMENT_IDENTIFIER_BYTES } from "./constants.js";
+import type { DocumentEncoder } from "./encoding/document-encoder.js";
 import { decodeU29, encodeU29 } from "./u29.js";
 
 export interface PutDocumentOperation {
@@ -27,11 +28,11 @@ export interface DecodedDeleteDocumentOperation {
   documentIdHex: string;
 }
 
-export function encodePutDocumentPayload(operation: PutDocumentOperation): Buffer {
+export function encodePutDocumentPayload(operation: PutDocumentOperation, encoder: DocumentEncoder): Buffer {
   assertCollectionId(operation.collectionId);
   assertDocumentId(operation.documentId);
 
-  const documentBytes = Buffer.from(JSON.stringify(operation.document), "utf8");
+  const documentBytes = encoder.encode(operation.document);
   const encodedDocumentLength = encodeU29(documentBytes.byteLength);
   const unalignedLength =
     operation.collectionId.byteLength +
@@ -51,7 +52,7 @@ export function encodePutDocumentPayload(operation: PutDocumentOperation): Buffe
   return payload;
 }
 
-export function decodePutDocumentPayload(payload: Buffer): DecodedPutDocumentOperation {
+export function decodePutDocumentPayload(payload: Buffer, encoder: DocumentEncoder): DecodedPutDocumentOperation {
   const collectionId = Buffer.from(payload.subarray(0, 4));
   const documentId = Buffer.from(payload.subarray(4, 4 + DOCUMENT_IDENTIFIER_BYTES));
   assertCollectionId(collectionId);
@@ -75,7 +76,7 @@ export function decodePutDocumentPayload(payload: Buffer): DecodedPutDocumentOpe
     collectionId,
     documentId,
     documentIdHex: documentId.toString("hex"),
-    document: JSON.parse(payload.subarray(documentStart, documentEnd).toString("utf8")) as Record<string, unknown>
+    document: encoder.decode(payload.subarray(documentStart, documentEnd))
   };
 }
 

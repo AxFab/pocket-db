@@ -7,6 +7,7 @@ import { open } from "../src/index.js";
 import { PUT_DOCUMENT_OPERATION, TRANSACTION_BEGIN_OPERATION, TRANSACTION_COMMIT_OPERATION } from "../src/storage/constants.js";
 import { createObjectId } from "../src/storage/document-id.js";
 import { encodePutDocumentPayload } from "../src/storage/document-operation.js";
+import { jsonEncoder } from "../src/storage/encoding/json-encoder.js";
 import { FileStorage } from "../src/storage/file-storage.js";
 
 const tempDirectories: string[] = [];
@@ -43,7 +44,7 @@ describe("transaction replay", () => {
           _id: documentId.toString("hex"),
           name: "Ada"
         }
-      })
+      }, jsonEncoder)
     );
     storage.close();
 
@@ -73,7 +74,7 @@ describe("transaction replay", () => {
           _id: documentId.toString("hex"),
           name: "Ada"
         }
-      })
+      }, jsonEncoder)
     );
     storage.appendOperation(TRANSACTION_COMMIT_OPERATION, Buffer.alloc(0));
     storage.close();

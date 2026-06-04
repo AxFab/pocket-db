@@ -2,6 +2,7 @@ import { evaluateCompiledQuery, type CompiledQuery, type DocumentRecord } from "
 import { compareDocuments, parseSortSpec, type SortDirection, type SortField } from "../search/sort.js";
 import { FILE_HEADER_BYTES, PUT_DOCUMENT_OPERATION } from "../storage/constants.js";
 import { decodePutDocumentPayload } from "../storage/document-operation.js";
+import type { DocumentEncoder } from "../storage/encoding/document-encoder.js";
 import type { FileStorage } from "../storage/file-storage.js";
 import { readOperationFromBuffer } from "../storage/operation-record.js";
 import type { Cursor } from "./types.js";
@@ -30,12 +31,14 @@ export class PocketCursor implements Cursor {
    * @param bulkBuffer  Optional pre-loaded file content (starting at FILE_HEADER_BYTES).
    *                    When provided, all document reads are served from this buffer
    *                    with zero additional syscalls.
+   * @param encoder     Document encoder used to deserialize payload bytes.
    */
   constructor(
     private readonly storage: FileStorage,
     private readonly query: CompiledQuery,
     private readonly candidates: QueryCandidate[],
-    private readonly bulkBuffer: Buffer | null = null
+    private readonly bulkBuffer: Buffer | null = null,
+    private readonly encoder: DocumentEncoder
   ) {}
 
   next(): Record<string, unknown> | null {
@@ -182,7 +185,7 @@ export class PocketCursor implements Cursor {
       throw new Error("Invalid cursor candidate: expected a put document operation.");
     }
 
-    return decodePutDocumentPayload(operation.payload).document;
+    return decodePutDocumentPayload(operation.payload, this.encoder).document;
   }
 }
 

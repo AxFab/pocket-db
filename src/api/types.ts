@@ -2,6 +2,9 @@ import type { UpdateExpression } from "../search/index.js";
 import type { SecondaryIndexDefinition, SecondaryIndexType } from "../indexes/index.js";
 import { DurabilityMode } from "../types.js";
 
+/** Serialization format used for document payloads in the storage file. */
+export type SerializationFormat = "json" | "bson" | "amf3";
+
 export interface OpenOptions {
   /**
    * Path to the database file.
@@ -22,6 +25,18 @@ export interface OpenOptions {
    *   flushed. Faster; suitable when data loss on hard crash is acceptable.
    */
   durability?: DurabilityMode;
+
+  /**
+   * Serialization format to use when creating a **new** database file.
+   *
+   * - `"json"` (default) — documents are stored as UTF-8 JSON.
+   * - `"bson"` — documents are stored as BSON (Binary JSON), using a minimal
+   *   subset: double, string, document, array, boolean, null, int32, int64.
+   *
+   * When opening an **existing** file the format is read from the file header
+   * and this option is ignored.
+   */
+  serialization?: SerializationFormat;
 }
 
 export interface Database {

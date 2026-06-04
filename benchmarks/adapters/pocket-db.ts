@@ -25,6 +25,12 @@ export class PocketDbAdapter implements Adapter {
       opts.durability = 'strict'
     else if (this.name.includes('relaxed'))
       opts.durability = 'relaxed'
+    if (this.name.includes('json'))
+      opts.serialization = 'json'
+    else if (this.name.includes('bson'))
+      opts.serialization = 'bson'
+    else if (this.name.includes('amf3'))
+      opts.serialization = 'amf3'
     this.db = open(opts);
     this.col = this.db.collection("docs");
     this.col.createIndex("role", { type: "string" });

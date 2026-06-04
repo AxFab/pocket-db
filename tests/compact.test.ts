@@ -7,6 +7,7 @@ import { open } from "../src/index.js";
 import { DELETE_DOCUMENT_OPERATION, FILE_HEADER_BYTES, HOLE_OPERATION, PUT_DOCUMENT_OPERATION, TRANSACTION_BEGIN_OPERATION } from "../src/storage/constants.js";
 import { createObjectId, objectIdFromHex } from "../src/storage/document-id.js";
 import { encodeDeleteDocumentPayload, encodePutDocumentPayload } from "../src/storage/document-operation.js";
+import { jsonEncoder } from "../src/storage/encoding/json-encoder.js";
 import { FileStorage } from "../src/storage/file-storage.js";
 
 const tempDirectories: string[] = [];
@@ -364,7 +365,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
         collectionId,
         documentId: docId1,
         document: { _id: docId1.toString("hex"), name: "Orphan1" }
-      })
+      }, jsonEncoder)
     );
     storage.appendOperation(
       PUT_DOCUMENT_OPERATION,
@@ -372,7 +373,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
         collectionId,
         documentId: docId2,
         document: { _id: docId2.toString("hex"), name: "Orphan2" }
-      })
+      }, jsonEncoder)
     );
     // No txnc — process "crashed" here.
     storage.close();
@@ -432,7 +433,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
         collectionId,
         documentId: docId,
         document: { _id: docId.toString("hex"), name: "Ghost" }
-      })
+      }, jsonEncoder)
     );
     storage.close();
 
@@ -468,7 +469,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
         collectionId,
         documentId,
         document: { _id: insertedId, name: "Ada", version: 2 }
-      })
+      }, jsonEncoder)
     );
     // No txnc — crash.
     storage.close();

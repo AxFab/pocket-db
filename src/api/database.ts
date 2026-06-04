@@ -17,6 +17,7 @@ import {
   TRANSACTION_COMMIT_OPERATION
 } from "../storage/constants.js";
 import { decodeDeleteDocumentPayload, decodePutDocumentPayload } from "../storage/document-operation.js";
+import type { DocumentEncoder } from "../storage/encoding/document-encoder.js";
 import type { FileLock } from "../storage/file-lock.js";
 import type { FileStorage } from "../storage/file-storage.js";
 import { decodeCreateIndexPayload, decodeDropIndexPayload } from "../storage/index-operation.js";
@@ -32,7 +33,8 @@ export class PocketDatabase implements Database {
 
   constructor(
     private readonly storage: FileStorage,
-    private readonly lock?: FileLock
+    private readonly lock: FileLock | undefined,
+    private readonly encoder: DocumentEncoder
   ) {
     this.loadCollections();
   }
@@ -88,7 +90,7 @@ export class PocketDatabase implements Database {
 
           // Update the primary index offset for moved documents.
           if (operation.identifier.equals(PUT_DOCUMENT_OPERATION)) {
-            const { collectionId, documentIdHex } = decodePutDocumentPayload(operation.payload);
+            const { collectionId, documentIdHex } = decodePutDocumentPayload(operation.payload, this.encoder);
             this.collectionsById.get(collectionId.toString("hex"))?.updateDocumentOffset(documentIdHex, writeHead);
           }
         }
@@ -135,7 +137,7 @@ export class PocketDatabase implements Database {
     }
 
     if (id.equals(PUT_DOCUMENT_OPERATION)) {
-      const docOp = decodePutDocumentPayload(operation.payload);
+      const docOp = decodePutDocumentPayload(operation.payload, this.encoder);
       const collection = this.collectionsById.get(docOp.collectionId.toString("hex"));
       if (!collection) return false;
       // Keep only the version whose offset matches what the primary index points to.
@@ -188,7 +190,7 @@ export class PocketDatabase implements Database {
     }
 
     if (operation.identifier.equals(PUT_DOCUMENT_OPERATION)) {
-      const documentOperation = decodePutDocumentPayload(operation.payload);
+      const documentOperation = decodePutDocumentPayload(operation.payload, this.encoder);
       const collection = this.collectionsById.get(documentOperation.collectionId.toString("hex"));
 
       if (!collection) {
@@ -263,7 +265,7 @@ export class PocketDatabase implements Database {
       this.collectionIds.delete(idHex);
     };
 
-    const collection = new PocketCollection(definition.id, definition.name, this.storage, onDrop);
+    const collection = new PocketCollection(definition.id, definition.name, this.storage, onDrop, this.encoder);
 
     this.collectionsByName.set(collection.name, collection);
     this.collectionsById.set(idHex, collection);

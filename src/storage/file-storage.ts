@@ -10,6 +10,8 @@ import {
   OPERATION_HEADER_BYTES,
   OPERATION_IDENTIFIER_BYTES,
   SERIALIZATION_FORMAT,
+  SERIALIZATION_FORMAT_AMF3,
+  SERIALIZATION_FORMAT_BSON,
   SERIALIZATION_VERSION
 } from "./constants.js";
 import { decodeOperationRecord, encodeOperationRecord, readOperationFromBuffer, type OperationRecord } from "./operation-record.js";
@@ -22,22 +24,38 @@ export class FileStorage {
     private readonly fd: number,
     readonly path: string,
     initialOffset: number,
-    private readonly durability: DurabilityMode
+    private readonly durability: DurabilityMode,
+    /** Raw byte value of the serialization format field in the file header. */
+    readonly serializationFormat: number
   ) {
     this.currentOffset = initialOffset;
   }
 
-  static open(path: string, durability: DurabilityMode = "relaxed"): FileStorage {
+  /**
+   * Open or create a database file at `path`.
+   *
+   * @param path - Filesystem path to the `.pdb` file.
+   * @param durability - fsync policy (`"relaxed"` by default).
+   * @param newFileFormatByte - Serialization format byte to write into the
+   *   header when **creating** a new file.  Ignored when opening an existing
+   *   file (the format is read from the existing header instead).
+   *   Defaults to {@link SERIALIZATION_FORMAT} (`'j'` = JSON).
+   */
+  static open(
+    path: string,
+    durability: DurabilityMode = "relaxed",
+    newFileFormatByte: number = SERIALIZATION_FORMAT
+  ): FileStorage {
     if (!existsSync(path)) {
       const fd = openSync(path, "wx+");
       const header = Buffer.alloc(FILE_HEADER_BYTES);
       MAGIC_HEADER_BYTES.copy(header, 0);
       header.writeUInt8(FORMAT_MAJOR_VERSION, MAGIC_HEADER_BYTES.byteLength);
       header.writeUInt8(FORMAT_MINOR_VERSION, MAGIC_HEADER_BYTES.byteLength + 1);
-      header.writeUInt8(SERIALIZATION_FORMAT, MAGIC_HEADER_BYTES.byteLength + 2);
+      header.writeUInt8(newFileFormatByte, MAGIC_HEADER_BYTES.byteLength + 2);
       header.writeUInt8(SERIALIZATION_VERSION, MAGIC_HEADER_BYTES.byteLength + 3);
       writeSync(fd, header, 0, header.length, 0);
-      return new FileStorage(fd, path, FILE_HEADER_BYTES, durability);
+      return new FileStorage(fd, path, FILE_HEADER_BYTES, durability, newFileFormatByte);
     }
 
     const fd = openSync(path, "r+");
@@ -64,8 +82,9 @@ export class FileStorage {
     }
 
     const serializationFormat = header.readUInt8(MAGIC_HEADER_BYTES.byteLength + 2);
+    const supportedFormats = new Set([SERIALIZATION_FORMAT, SERIALIZATION_FORMAT_BSON, SERIALIZATION_FORMAT_AMF3]);
 
-    if (serializationFormat !== SERIALIZATION_FORMAT) {
+    if (!supportedFormats.has(serializationFormat)) {
       closeSync(fd);
       throw new Error(`Unsupported serialization format: ${String.fromCharCode(serializationFormat)}.`);
     }
@@ -78,7 +97,7 @@ export class FileStorage {
     }
 
     const fileSize = fstatSync(fd).size;
-    return new FileStorage(fd, path, fileSize, durability);
+    return new FileStorage(fd, path, fileSize, durability, serializationFormat);
   }
 
   close(): void {
