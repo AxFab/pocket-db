@@ -1,10 +1,13 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import SqliteDatabase from "better-sqlite3";
 import type { Database, Statement } from "better-sqlite3";
 import { generateId } from "../data.js";
 import type { Adapter, BenchDocument, StoredDocument } from "./adapter.js";
 
 /**
- * SQLite in-memory adapter.
+ * SQLite adapter.
  *
  * Documents are stored as JSON blobs in a TEXT column. Two additional columns
  * (`role`, `age`) are extracted at insert time and indexed with a B-tree index
@@ -12,10 +15,15 @@ import type { Adapter, BenchDocument, StoredDocument } from "./adapter.js";
  *
  * All statements are compiled once at setup time and reused, avoiding the
  * per-call parsing overhead that would unfairly penalise SQLite.
+ *
+ * In file-mode compare to memory mode, the only
+ * difference is that the database lives on disk in a temporary directory.
+ * This is the most direct apples-to-apples comparison with pocket-db.
  */
-export class SqliteMemoryAdapter implements Adapter {
-  readonly name = "sqlite (memory)";
+export class SqliteAdapter implements Adapter {
+  readonly name // = "sqlite (file)";
 
+  private tempDir = "";
   private db: Database | null = null;
   private stmtInsert!: Statement;
   private stmtFindById!: Statement;
@@ -27,8 +35,18 @@ export class SqliteMemoryAdapter implements Adapter {
   private stmtCount!: Statement;
   private stmtSortByScore!: Statement;
 
+  constructor (mode:string) {
+    mode = mode ?? 'file'
+    this.name = `sqlite (${mode})`
+  }
+
   setup(initialDocs: BenchDocument[]): string[] {
-    this.db = new SqliteDatabase(":memory:");
+    if (this.name === 'sqlite (file)') {
+      this.tempDir = mkdtempSync(join(tmpdir(), "sqlite-bench-"));
+      this.db = new SqliteDatabase(join(this.tempDir, "bench.db"));
+    } else {
+      this.db = new SqliteDatabase(":memory:");
+    }
     this.createSchema();
     this.prepareStatements();
     return this.bulkInsert(initialDocs);
@@ -37,6 +55,10 @@ export class SqliteMemoryAdapter implements Adapter {
   teardown(): void {
     this.db?.close();
     this.db = null;
+    if (this.tempDir) {
+      rmSync(this.tempDir, { recursive: true, force: true });
+      this.tempDir = "";
+    }
   }
 
   insertOne(doc: BenchDocument): string {

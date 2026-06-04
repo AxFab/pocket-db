@@ -1,5 +1,6 @@
 import type { UpdateExpression } from "../search/index.js";
 import type { SecondaryIndexDefinition, SecondaryIndexType } from "../indexes/index.js";
+import { DurabilityMode } from "../types.js";
 
 export interface OpenOptions {
   /**
@@ -9,6 +10,18 @@ export interface OpenOptions {
    * layer is still experimental.
    */
   path?: string;
+
+  /**
+   * Controls fsync behaviour after every write operation.
+   *
+   * - `"strict"` — calls `fsync` after each `appendOperation`, guaranteeing
+   *   that the kernel has flushed the data to durable storage before the write
+   *   call returns. Safest option; incurs one extra syscall per write.
+   * - `"relaxed"` (default) — skips `fsync`. Writes reach the OS page cache
+   *   but may be lost on a power failure or OS crash before the cache is
+   *   flushed. Faster; suitable when data loss on hard crash is acceptable.
+   */
+  durability?: DurabilityMode;
 }
 
 export interface Database {

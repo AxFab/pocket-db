@@ -12,17 +12,17 @@
  *   npm install   (requires node-gyp / Xcode Command Line Tools for better-sqlite3)
  */
 import { PocketDbAdapter } from "./adapters/pocket-db.js";
-import { SqliteMemoryAdapter } from "./adapters/sqlite-memory.js";
-import { SqliteFileAdapter } from "./adapters/sqlite-file.js";
+import { SqliteAdapter } from "./adapters/sqlite.js";
 import { JsonFileAdapter } from "./adapters/json-file.js";
 import { LowDbAdapter } from "./adapters/lowdb.js";
 import { LokiJsAdapter } from "./adapters/lokijs.js";
 import { runBenchmarks, printTable } from "./runner.js";
 
 const adapters = [
-  new PocketDbAdapter(),
-  new SqliteMemoryAdapter(),
-  new SqliteFileAdapter(),
+  new PocketDbAdapter('strict'),
+  new PocketDbAdapter('relaxed'),
+  new SqliteAdapter('memory'),
+  new SqliteAdapter('file'),
   new JsonFileAdapter(),
   new LowDbAdapter(),
   new LokiJsAdapter(),

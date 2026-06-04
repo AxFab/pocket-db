@@ -28,6 +28,47 @@ afterEach(() => {
   }
 });
 
+describe("durability option", () => {
+  it('opens with durability "relaxed" and writes succeed without fsync', () => {
+    const path = join(createTempDirectory(), "test.pdb");
+    const db = open({ path, durability: "relaxed" });
+    const col = db.collection("items");
+    const result = col.insertOne({ name: "a" });
+    db.close();
+    assert.equal(result.acknowledged, true);
+  });
+
+  it('opens with durability "strict" and writes succeed with fsync', () => {
+    const path = join(createTempDirectory(), "test.pdb");
+    const db = open({ path, durability: "strict" });
+    const col = db.collection("items");
+    const result = col.insertOne({ name: "b" });
+    db.close();
+    assert.equal(result.acknowledged, true);
+  });
+
+  it('defaults to "relaxed" when durability is omitted', () => {
+    const path = join(createTempDirectory(), "test.pdb");
+    const db = open({ path });
+    const col = db.collection("items");
+    const result = col.insertOne({ name: "c" });
+    db.close();
+    assert.equal(result.acknowledged, true);
+  });
+
+  it('strict mode data survives a close/reopen cycle', () => {
+    const path = join(createTempDirectory(), "test.pdb");
+    const db = open({ path, durability: "strict" });
+    const id = db.collection("items").insertOne({ x: 42 }).insertedId;
+    db.close();
+
+    const db2 = open({ path, durability: "strict" });
+    const doc = db2.collection("items").findOne({ _id: id });
+    db2.close();
+    assert.deepEqual(doc, { _id: id, x: 42 });
+  });
+});
+
 describe("open", () => {
   it("creates a database file and writes the full 12-byte file header", () => {
     const path = join(createTempDirectory(), "test.pdb");

@@ -1,4 +1,4 @@
-import { closeSync, existsSync, fstatSync, ftruncateSync, openSync, readSync, writeSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, fstatSync, ftruncateSync, openSync, readSync, writeSync } from "node:fs";
 import {
   FILE_HEADER_BYTES,
   FORMAT_HEADER_BYTES,
@@ -13,6 +13,7 @@ import {
   SERIALIZATION_VERSION
 } from "./constants.js";
 import { decodeOperationRecord, encodeOperationRecord, readOperationFromBuffer, type OperationRecord } from "./operation-record.js";
+import type { DurabilityMode } from '../types.js'
 
 export class FileStorage {
   private currentOffset: number;
@@ -20,12 +21,13 @@ export class FileStorage {
   private constructor(
     private readonly fd: number,
     readonly path: string,
-    initialOffset: number
+    initialOffset: number,
+    private readonly durability: DurabilityMode
   ) {
     this.currentOffset = initialOffset;
   }
 
-  static open(path: string): FileStorage {
+  static open(path: string, durability: DurabilityMode = "relaxed"): FileStorage {
     if (!existsSync(path)) {
       const fd = openSync(path, "wx+");
       const header = Buffer.alloc(FILE_HEADER_BYTES);
@@ -35,7 +37,7 @@ export class FileStorage {
       header.writeUInt8(SERIALIZATION_FORMAT, MAGIC_HEADER_BYTES.byteLength + 2);
       header.writeUInt8(SERIALIZATION_VERSION, MAGIC_HEADER_BYTES.byteLength + 3);
       writeSync(fd, header, 0, header.length, 0);
-      return new FileStorage(fd, path, FILE_HEADER_BYTES);
+      return new FileStorage(fd, path, FILE_HEADER_BYTES, durability);
     }
 
     const fd = openSync(path, "r+");
@@ -76,7 +78,7 @@ export class FileStorage {
     }
 
     const fileSize = fstatSync(fd).size;
-    return new FileStorage(fd, path, fileSize);
+    return new FileStorage(fd, path, fileSize, durability);
   }
 
   close(): void {
@@ -89,6 +91,10 @@ export class FileStorage {
 
     writeAll(this.fd, record, offset);
     this.currentOffset += record.byteLength;
+
+    if (this.durability === "strict") {
+      fsyncSync(this.fd);
+    }
 
     return offset;
   }

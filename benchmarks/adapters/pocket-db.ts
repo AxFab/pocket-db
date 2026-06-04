@@ -4,18 +4,28 @@ import { join } from "node:path";
 import { open } from "../../src/index.js";
 import { generateId } from "../data.js";
 import type { Adapter, BenchDocument, StoredDocument } from "./adapter.js";
-import type { Collection, Database } from "../../src/api/types.js";
+import type { Collection, Database, OpenOptions } from "../../src/api/types.js";
 
 export class PocketDbAdapter implements Adapter {
-  readonly name = "pocket-db";
+  readonly name // = "pocket-db";
 
   private tempDir = "";
   private db: Database | null = null;
   private col: Collection | null = null;
 
+  constructor (mode:string) {
+    mode = mode || "relaxed"
+    this.name = `pocket-db (${mode})`
+  }
+
   setup(initialDocs: BenchDocument[]): string[] {
     this.tempDir = mkdtempSync(join(tmpdir(), "pdb-bench-"));
-    this.db = open({ path: join(this.tempDir, "bench.pdb") });
+    const opts:OpenOptions = { path: join(this.tempDir, "bench.pdb") };
+    if (this.name.includes('strict'))
+      opts.durability = 'strict'
+    else if (this.name.includes('relaxed'))
+      opts.durability = 'relaxed'
+    this.db = open(opts);
     this.col = this.db.collection("docs");
     this.col.createIndex("role", { type: "string" });
 

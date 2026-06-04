@@ -8,7 +8,7 @@ const DEFAULT_DATABASE_PATH = "pocket.db";
 export function open(options: OpenOptions = {}): Database {
   const dbPath = options.path ?? DEFAULT_DATABASE_PATH;
   const lock = FileLock.acquire(dbPath);
-  const storage = FileStorage.open(dbPath);
+  const storage = FileStorage.open(dbPath, options.durability ?? "relaxed");
   return new PocketDatabase(storage, lock);
 }
 
