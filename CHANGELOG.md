@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] — 2026-06-08
+
+### Fixed
+
+- **Critical CJS import fix** — CommonJS consumers (`require('@axfab/pocket-db')`) were
+  broken due to a missing `tsconfig.cjs.json` and incorrect package exports wiring. This
+  release adds a proper CJS build pipeline and verifies both ESM and CJS entry points.
+
+### Added
+
+- **`durability` option** in `OpenOptions` — controls `fsync` behaviour after every write:
+  - `"relaxed"` (default) — skips `fsync`; writes reach the OS page cache. Faster; suitable
+    when data loss on a hard crash is acceptable.
+  - `"strict"` — calls `fsync` after each `appendOperation`, guaranteeing the kernel has
+    flushed data to durable storage before the call returns. One extra syscall per write.
+- **`serialization` option** in `OpenOptions` — selects the document encoding format when
+  creating a **new** database file. Existing files are unaffected (format is read from the
+  file header):
+  - `"json"` (default) — documents stored as UTF-8 JSON.
+  - `"bson"` — documents stored as BSON (Binary JSON), supporting double, string, document,
+    array, boolean, null, int32, int64.
+  - `"amf3"` — documents stored as AMF3 (Action Message Format 3), a compact binary format
+    supporting undefined, null, boolean, integer, double, string, array, and object.
+
+### Changed
+
+- Binary encoders (BSON, AMF3) now use a single pre-allocated `WriteBuffer` for all
+  encoding, eliminating per-field allocations and reducing GC pressure on write-heavy
+  workloads.
+
+---
+
 ## [0.1.0] — 2026-05-21
 
 First public release. Covers everything needed to use pocket-db as an embedded
@@ -55,7 +87,7 @@ document store in a Node.js application.
 
 Small fixes of the first release. README and a few utilities functions.
 
-- Add alias `pocketDb()` unstead of `open()`
+- Add alias `pocketDb()` instead of `open()`
 - `db.getCollections(): string[]`
 - `db.existsCollection(name: string): boolean`
 - `col.indexes: readonly SecondaryIndexDefinition[]`

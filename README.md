@@ -92,14 +92,38 @@ Every document gets a `_id`: a 24-character lowercase hex string (12-byte Object
 
 ```ts
 import { pocketDb } from "pocket-db";
-const db = pocketDb("./data.pdb", { /* future options */ });
+const db = pocketDb("./data.pdb");
 ```
 
-You can also merge both arguments by setting the property `path` of the options object. Both forms are equivalent. It's a convenience for callers who prefer a shorter call site.
+You can also merge both arguments by setting the `path` property in the options object, or pass all options together:
 
 ```ts
 const db = pocketDb({ path: "./data.pdb" });
 ```
+
+`pocketDb` accepts an optional `OpenOptions` object as its second argument (or first, when using the object form):
+
+```ts
+const db = pocketDb("./data.pdb", {
+  durability: "strict",      // default: "relaxed"
+  serialization: "bson",     // default: "json" — only applies when creating a new file
+});
+```
+
+#### `durability`
+
+Controls whether `fsync` is called after every write.
+
+- `"relaxed"` *(default)* — skips `fsync`. Writes reach the OS page cache but may be lost on a power failure or OS crash before the cache is flushed. Faster; suitable when losing the last few writes on a hard crash is acceptable.
+- `"strict"` — calls `fsync` after every `appendOperation`, guaranteeing data is on durable storage before the call returns. Safest; incurs one extra syscall per write.
+
+#### `serialization`
+
+Selects the document encoding format when **creating a new database file**. Opening an existing file always uses the format recorded in the file header — this option is ignored.
+
+- `"json"` *(default)* — documents stored as UTF-8 JSON. Human-readable, universally compatible.
+- `"bson"` — documents stored as BSON (Binary JSON). Supports double, string, document, array, boolean, null, int32, int64. More compact than JSON for numeric-heavy documents.
+- `"amf3"` — documents stored as AMF3 (Action Message Format 3). A compact binary format supporting undefined, null, boolean, integer, double, string, array, and object.
 
 ### Database
 
