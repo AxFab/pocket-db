@@ -15,6 +15,10 @@ export const SERIALIZATION_FORMAT = "j".charCodeAt(0);
 export const SERIALIZATION_FORMAT_BSON = "b".charCodeAt(0);
 /** AMF3 serialization format byte (`'a'`). */
 export const SERIALIZATION_FORMAT_AMF3 = "a".charCodeAt(0);
+/** CBOR serialization format byte (`'c'`). */
+export const SERIALIZATION_FORMAT_CBOR = "c".charCodeAt(0);
+/** MessagePack serialization format byte (`'m'`). */
+export const SERIALIZATION_FORMAT_MSGPACK = "m".charCodeAt(0);
 export const SERIALIZATION_VERSION = 0;
 
 // Total file header = magic (8) + format header (4)

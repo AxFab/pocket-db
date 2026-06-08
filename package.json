@@ -53,5 +53,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "cbor-x": "^1.6.4",
+    "msgpackr": "^2.0.2"
   }
 }

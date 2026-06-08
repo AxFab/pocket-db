@@ -12,6 +12,8 @@ import {
   SERIALIZATION_FORMAT,
   SERIALIZATION_FORMAT_AMF3,
   SERIALIZATION_FORMAT_BSON,
+  SERIALIZATION_FORMAT_CBOR,
+  SERIALIZATION_FORMAT_MSGPACK,
   SERIALIZATION_VERSION
 } from "./constants.js";
 import { decodeOperationRecord, encodeOperationRecord, readOperationFromBuffer, type OperationRecord } from "./operation-record.js";
@@ -82,7 +84,13 @@ export class FileStorage {
     }
 
     const serializationFormat = header.readUInt8(MAGIC_HEADER_BYTES.byteLength + 2);
-    const supportedFormats = new Set([SERIALIZATION_FORMAT, SERIALIZATION_FORMAT_BSON, SERIALIZATION_FORMAT_AMF3]);
+    const supportedFormats = new Set([
+      SERIALIZATION_FORMAT,
+      SERIALIZATION_FORMAT_BSON,
+      SERIALIZATION_FORMAT_AMF3,
+      SERIALIZATION_FORMAT_CBOR,
+      SERIALIZATION_FORMAT_MSGPACK
+    ]);
 
     if (!supportedFormats.has(serializationFormat)) {
       closeSync(fd);

@@ -11,6 +11,7 @@
   <a href="https://www.npmjs.com/package/@axfab/pocket-db"><img src="https://img.shields.io/npm/v/@axfab/pocket-db.svg" alt="npm version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node ≥ 18" />
+  <img src="https://img.shields.io/badge/module-ESM/CJS-4682B4" alt="ESM/CJS" />
   <a href="https://npmcharts.com/compare/@axfab/pocket-db?minimal=true"><img src="https://img.shields.io/npm/dm/@axfab/pocket-db.svg" alt="npm downloads" /></a>
 </p>
 

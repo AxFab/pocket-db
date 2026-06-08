@@ -3,7 +3,7 @@ import type { SecondaryIndexDefinition, SecondaryIndexType } from "../indexes/in
 import { DurabilityMode } from "../types.js";
 
 /** Serialization format used for document payloads in the storage file. */
-export type SerializationFormat = "json" | "bson" | "amf3";
+export type SerializationFormat = "json" | "bson" | "amf3" | "cbor" | "msgpack";
 
 export interface OpenOptions {
   /**

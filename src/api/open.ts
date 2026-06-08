@@ -4,7 +4,9 @@ import {
   getEncoder,
   SERIALIZATION_FORMAT_AMF3,
   SERIALIZATION_FORMAT_BSON,
-  SERIALIZATION_FORMAT_JSON
+  SERIALIZATION_FORMAT_CBOR,
+  SERIALIZATION_FORMAT_JSON,
+  SERIALIZATION_FORMAT_MSGPACK
 } from "../storage/encoding/index.js";
 import { PocketDatabase } from "./database.js";
 import type { Database, OpenOptions } from "./types.js";
@@ -18,8 +20,10 @@ export function open(options: OpenOptions = {}): Database {
   // When opening an existing file, the format is read from the header and this
   // option is ignored (FileStorage.open handles that path).
   const requestedFormatByte =
-    options.serialization === "bson" ? SERIALIZATION_FORMAT_BSON
-    : options.serialization === "amf3" ? SERIALIZATION_FORMAT_AMF3
+    options.serialization === "bson"     ? SERIALIZATION_FORMAT_BSON
+    : options.serialization === "amf3"   ? SERIALIZATION_FORMAT_AMF3
+    : options.serialization === "cbor"   ? SERIALIZATION_FORMAT_CBOR
+    : options.serialization === "msgpack" ? SERIALIZATION_FORMAT_MSGPACK
     : SERIALIZATION_FORMAT_JSON;
 
   const lock = FileLock.acquire(dbPath);

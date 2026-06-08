@@ -31,6 +31,11 @@ export class PocketDbAdapter implements Adapter {
       opts.serialization = 'bson'
     else if (this.name.includes('amf3'))
       opts.serialization = 'amf3'
+    else if (this.name.includes('cbor'))
+      opts.serialization = 'cbor'
+    else if (this.name.includes('msgpack'))
+      opts.serialization = 'msgpack'
+
     this.db = open(opts);
     this.col = this.db.collection("docs");
     this.col.createIndex("role", { type: "string" });
