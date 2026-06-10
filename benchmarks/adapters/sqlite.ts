@@ -29,6 +29,7 @@ export class SqliteAdapter implements Adapter {
   private stmtFindById!: Statement;
   private stmtFindAll!: Statement;
   private stmtFindByName!: Statement;
+  private stmtFindByNameRegex!: Statement;
   private stmtFindByRole!: Statement;
   private stmtUpdate!: Statement;
   private stmtDelete!: Statement;
@@ -94,6 +95,11 @@ export class SqliteAdapter implements Adapter {
     return (this.stmtFindByRole.all(role) as { data: string }[]).map((r) => JSON.parse(r.data) as StoredDocument);
   }
 
+  // Unindexed regex scan via the custom REGEXP function (see createSchema).
+  findByNameRegex(pattern: string): StoredDocument[] {
+    return (this.stmtFindByNameRegex.all(pattern) as { data: string }[]).map((r) => JSON.parse(r.data) as StoredDocument);
+  }
+
   updateOne(id: string, score: number): void {
     this.stmtUpdate.run(score, score, id);
   }
@@ -111,6 +117,24 @@ export class SqliteAdapter implements Adapter {
   }
 
   private createSchema(): void {
+    // SQLite has no built-in REGEXP implementation; register a JS function so
+    // `expr REGEXP pattern` works. Compiled RegExp objects are cached per
+    // pattern to avoid re-parsing the pattern on every row.
+    const regexCache = new Map<string, RegExp>();
+    this.db!.function("regexp", { deterministic: true }, (pattern, value) => {
+      if (typeof value !== "string" || typeof pattern !== "string") {
+        return 0;
+      }
+
+      let regex = regexCache.get(pattern);
+      if (!regex) {
+        regex = new RegExp(pattern);
+        regexCache.set(pattern, regex);
+      }
+
+      return regex.test(value) ? 1 : 0;
+    });
+
     this.db!.exec(`
       CREATE TABLE documents (
         id    TEXT PRIMARY KEY,
@@ -131,6 +155,8 @@ export class SqliteAdapter implements Adapter {
     this.stmtFindAll     = this.db!.prepare("SELECT data FROM documents");
     // Unindexed scan via json_extract — equivalent to pocket-db's full-collection scan.
     this.stmtFindByName  = this.db!.prepare("SELECT data FROM documents WHERE json_extract(data, '$.name') = ?");
+    // Unindexed regex scan via the registered REGEXP function.
+    this.stmtFindByNameRegex = this.db!.prepare("SELECT data FROM documents WHERE json_extract(data, '$.name') REGEXP ?");
     // Indexed lookup via the extracted role column.
     this.stmtFindByRole  = this.db!.prepare("SELECT data FROM documents WHERE role = ?");
     this.stmtUpdate      = this.db!.prepare(

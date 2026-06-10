@@ -130,6 +130,12 @@ export class LokiJsAdapter implements Adapter {
     return (this.col!.find({ role } as any) as LokiDoc[]).map(stripMeta);
   }
 
+  // LokiJS has native $regex support — full collection scan on `name`.
+  findByNameRegex(pattern: string): StoredDocument[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (this.col!.find({ name: { $regex: new RegExp(pattern) } } as any) as LokiDoc[]).map(stripMeta);
+  }
+
   updateOne(id: string, score: number): void {
     const doc = this.col!.by("_id", id) as LokiDoc | undefined;
     if (doc) {

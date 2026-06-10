@@ -26,7 +26,7 @@ export function evaluateCompiledQuery(query: CompiledQuery, document: DocumentRe
   }
 }
 
-function evaluateFieldOperator(operator: FieldOperator, value: QueryValue, hasField: boolean): boolean {
+export function evaluateFieldOperator(operator: FieldOperator, value: QueryValue, hasField: boolean): boolean {
   switch (operator.type) {
     case "exists":
       return hasField === operator.value;
@@ -55,6 +55,11 @@ function evaluateFieldOperator(operator: FieldOperator, value: QueryValue, hasFi
     case "nin":
       return operator.values.every((candidate) => !valuesEqual(value, candidate));
 
+    case "regex":
+      // Only string values can match; the compiled RegExp never carries the
+      // g/y flags, so `test` is stateless here.
+      return typeof value === "string" && operator.regex.test(value);
+
     case "not":
       return !operator.operators.every((op) => evaluateFieldOperator(op, value, hasField));
   }
@@ -76,7 +81,7 @@ function compareValues(left: QueryValue, right: QueryValue): number {
   return Number.NaN;
 }
 
-function valuesEqual(left: QueryValue, right: QueryValue): boolean {
+export function valuesEqual(left: QueryValue, right: QueryValue): boolean {
   if (left === right) {
     return true;
   }

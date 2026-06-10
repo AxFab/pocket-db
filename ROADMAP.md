@@ -80,7 +80,7 @@ https://www.mongodb.com/docs/manual/reference/mql/update/#std-label-update-opera
  - `$addToSet` Adds elements to an array only if they do not already exist in the set.
  - `$pop` Removes the first or last item of an array.
  - `$pull/pullAll` Removes all array elements that match a specified query.
- - ``
+ - `$regex` Regexp `str.test(regex)` (don't allow /g or /y)
 
 ## Sorting
 

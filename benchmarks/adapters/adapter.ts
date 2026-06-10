@@ -51,6 +51,13 @@ export interface Adapter {
    */
   findByRole(role: string): StoredDocument[];
 
+  /**
+   * Filter the `name` field with a regular expression (not indexed).
+   * Measures regex full-collection scan performance ($regex in pocket-db).
+   * `pattern` is a regex source string without flags.
+   */
+  findByNameRegex(pattern: string): StoredDocument[];
+
   /** Replace the `score` field of the given document. */
   updateOne(id: string, score: number): void;
 

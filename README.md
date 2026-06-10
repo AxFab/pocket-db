@@ -188,6 +188,7 @@ Queries are plain objects. A bare value is shorthand for `$eq`.
 | `$in` | Field value is in the given array |
 | `$nin` | Field value is not in the given array |
 | `$exists` | Field is present (`true`) or absent (`false`) |
+| `$regex` | String matches a regular expression (flags via `$options`; `g`/`y` rejected) |
 | `$not` | Negates an operator expression |
 | `$and` | Logical AND of sub-queries |
 | `$or` | Logical OR of sub-queries |
@@ -207,6 +208,11 @@ users.find({ status: { $not: { $eq: "banned" } } });
 
 // OR
 users.find({ $or: [{ role: "admin" }, { role: "editor" }] });
+
+// Regex (string pattern + $options, RegExp value, or bare RegExp shorthand)
+users.find({ name: { $regex: "^ada", $options: "i" } });
+users.find({ name: { $regex: /^ada/i } });
+users.find({ name: /^Ada/ });
 ```
 
 ---
@@ -220,13 +226,24 @@ Updates are expressed as operator objects applied to the current document.
 | `$set` | Set one or more fields |
 | `$unset` | Remove one or more fields |
 | `$inc` | Increment a numeric field |
+| `$mul` | Multiply a numeric field by a factor |
 | `$min` / `$max` | Set field only if new value is lower / higher |
+| `$rename` | Rename a field (missing source is a no-op) |
+| `$currentDate` | Set field to the current date (`true` / `{ $type: "date" }` → ISO string, `{ $type: "timestamp" }` → epoch ms) |
 | `$push` | Append a value to an array field |
+| `$addToSet` | Append a value only if no equal element exists |
+| `$pop` | Remove the last (`1`) or first (`-1`) array element |
+| `$pull` | Remove array elements equal to a value or matching a condition |
+| `$pullAll` | Remove array elements equal to any listed value |
 
 ```ts
 users.updateOne(id, {
   $set: { role: "editor" },
-  $inc: { loginCount: 1 }
+  $inc: { loginCount: 1 },
+  $mul: { score: 1.1 },
+  $currentDate: { lastLogin: true },
+  $addToSet: { tags: "active" },
+  $pull: { scores: { $lt: 10 } }
 });
 ```
 

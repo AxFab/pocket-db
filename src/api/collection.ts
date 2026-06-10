@@ -592,6 +592,18 @@ function assertUpdateDoesNotMutateId(update: UpdateExpression): void {
   if (update.$set && Object.hasOwn(update.$set, "_id")) {
     throw new Error("Cannot update immutable field _id.");
   }
+
+  if (update.$currentDate && Object.hasOwn(update.$currentDate, "_id")) {
+    throw new Error("Cannot update immutable field _id.");
+  }
+
+  if (update.$rename) {
+    for (const [field, target] of Object.entries(update.$rename)) {
+      if (field === "_id" || target === "_id") {
+        throw new Error("Cannot update immutable field _id.");
+      }
+    }
+  }
 }
 
 function assertUniqueBatchIds(ids: string[]): void {

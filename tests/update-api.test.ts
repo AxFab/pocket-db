@@ -162,6 +162,18 @@ describe("Collection updateOne and updateMany", () => {
       () => users.updateOne(insertedId, { $unset: { _id: true } }),
       /immutable field _id/
     );
+    assert.throws(
+      () => users.updateOne(insertedId, { $rename: { _id: "documentId" } }),
+      /immutable field _id/
+    );
+    assert.throws(
+      () => users.updateOne(insertedId, { $rename: { name: "_id" } }),
+      /immutable field _id/
+    );
+    assert.throws(
+      () => users.updateOne(insertedId, { $currentDate: { _id: true } }),
+      /immutable field _id/
+    );
 
     db.close();
   });

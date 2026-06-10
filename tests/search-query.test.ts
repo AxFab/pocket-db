@@ -171,11 +171,59 @@ describe("search query evaluation", () => {
     assert.equal(evaluateCompiledQuery(query, { name: "Grace" }), false);
   });
 
+  // ── regular expressions ──────────────────────────────────────────────────
+
+  it("matches $regex with a string pattern", () => {
+    assert.equal(matchesQuery({ name: { $regex: "^Ad" } }, ada), true);
+    assert.equal(matchesQuery({ name: { $regex: "^Gr" } }, ada), false);
+    assert.equal(matchesQuery({ name: { $regex: "da$" } }, ada), true);
+  });
+
+  it("matches $regex with $options flags", () => {
+    assert.equal(matchesQuery({ name: { $regex: "^ada$", $options: "i" } }, ada), true);
+    assert.equal(matchesQuery({ name: { $regex: "^ada$" } }, ada), false);
+  });
+
+  it("matches $regex with a RegExp value", () => {
+    assert.equal(matchesQuery({ name: { $regex: /^A.a$/ } }, ada), true);
+    assert.equal(matchesQuery({ name: { $regex: /^ada$/i } }, ada), true);
+    assert.equal(matchesQuery({ name: { $regex: /^Grace$/ } }, ada), false);
+  });
+
+  it("matches a bare RegExp condition as $regex shorthand", () => {
+    assert.equal(matchesQuery({ name: /^Ad/ }, ada), true);
+    assert.equal(matchesQuery({ name: /^gr/i }, ada), false);
+  });
+
+  it("$regex never matches non-string values", () => {
+    assert.equal(matchesQuery({ age: { $regex: "37" } }, ada), false);
+    assert.equal(matchesQuery({ active: { $regex: "true" } }, ada), false);
+    assert.equal(matchesQuery({ missing: { $regex: ".*" } }, ada), false);
+  });
+
+  it("supports $regex inside $not", () => {
+    assert.equal(matchesQuery({ name: { $not: { $regex: "^Gr" } } }, ada), true);
+    assert.equal(matchesQuery({ name: { $not: { $regex: "^Ad" } } }, ada), false);
+  });
+
+  it("rejects the stateful g and y regex flags", () => {
+    assert.throws(() => matchesQuery({ name: { $regex: "a", $options: "g" } }, ada), /Unsupported \$regex flag/);
+    assert.throws(() => matchesQuery({ name: { $regex: /a/g } }, ada), /Unsupported \$regex flag/);
+    assert.throws(() => matchesQuery({ name: { $regex: /a/y } }, ada), /Unsupported \$regex flag/);
+  });
+
+  it("rejects invalid $regex usage", () => {
+    assert.throws(() => matchesQuery({ name: { $regex: 42 } as never }, ada), /\$regex must be a string or a RegExp/);
+    assert.throws(() => matchesQuery({ name: { $options: "i" } as never }, ada), /\$options requires a \$regex/);
+    assert.throws(() => matchesQuery({ name: { $regex: /a/i, $options: "i" } }, ada), /cannot be combined/);
+    assert.throws(() => matchesQuery({ name: { $regex: "(" } }, ada), /Invalid \$regex pattern/);
+  });
+
   // ── unsupported operators ────────────────────────────────────────────────
 
   it("rejects unsupported operators", () => {
     assert.throws(
-      () => matchesQuery({ age: { $regex: /foo/ } as never }, ada),
+      () => matchesQuery({ age: { $where: "true" } as never }, ada),
       /Unsupported query operator/
     );
   });

@@ -137,9 +137,11 @@ Batch methods (`insertMany`, `updateMany`, `deleteMany`) wrap their individual r
 
 ### Query Compilation (`src/search/compile-query.ts`)
 
-Supported query operators: `$eq` (implicit from bare value), `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$not`, `$and`, `$or`, `$nor`.
+Supported query operators: `$eq` (implicit from bare value), `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$regex` (with `$options`), `$not`, `$and`, `$or`, `$nor`.
 
 Unsupported operators throw at compile time.
+
+`$regex` accepts a pattern string (flags via `$options`), a `RegExp` instance (flags on the RegExp; mutually exclusive with `$options`), or a bare `RegExp` condition as shorthand. Allowed flags: `i`, `m`, `s`, `u` — `g` and `y` throw at compile time because they make `RegExp.test` stateful. Matches string values only; always evaluated in the residual pass (no index support).
 
 `$not` validation: value must be a non-null, non-array object with at least one key. Empty object `{}` throws because `isOperatorObject({})` returns false (no `$`-keys), so the empty-key check (`Object.keys(value).length === 0`) is done explicitly before calling `compileFieldOperators`.
 
@@ -159,11 +161,14 @@ type CompiledQuery = AndPredicate | OrPredicate | NorPredicate | FieldPredicate
 - `gte` / `lte`: inclusive comparison using the same `compareValues` logic as sort.
 - `nin`: every candidate must not equal the field value.
 - `exists`: checks presence of the field in the document.
+- `regex`: `RegExp.test` on string values only; non-strings and missing fields never match.
 
 ### Update Operators (`src/search/update-document.ts`)
 
-Supported: `$set`, `$unset`, `$min`, `$max`, `$inc`, `$push`.  
-Unsupported operators throw. `_id` is immutable — `$set: { _id }` and `$unset: { _id }` both throw.
+Supported: `$set`, `$unset`, `$min`, `$max`, `$inc`, `$mul`, `$rename`, `$currentDate`, `$push`, `$addToSet`, `$pop`, `$pull`, `$pullAll`.  
+Unsupported operators throw. `_id` is immutable — `$set`, `$unset`, `$currentDate`, and `$rename` (as source or target) on `_id` all throw (enforced by `assertUpdateDoesNotMutateId` in `collection.ts`).
+
+Semantics: `$inc`/`$mul`/`$min`/`$max` require an existing number field. Array operators (`$push`, `$addToSet`, `$pop`, `$pull`, `$pullAll`) require an existing array field. `$rename` with a missing source is a no-op; an existing target is overwritten. `$currentDate`: `true` / `{ $type: "date" }` → ISO-8601 string, `{ $type: "timestamp" }` → epoch ms. `$pull` accepts a literal (deep equality) or a field operator expression (e.g. `{ $gte: 5 }`) evaluated per array element. `$pop` takes `1` (last) or `-1` (first); empty arrays are a no-op.
 
 ### Secondary Indexes (`src/indexes/`)
 
@@ -243,8 +248,8 @@ pocketDb("./data.pdb")
 **V1 complete:**
 - Collections, JSON documents, auto `_id`
 - `insertOne` / `insertMany`, `findOne` / `find`, `updateOne` / `updateMany`, `deleteOne` / `deleteMany`
-- Update operators: `$set`, `$unset`, `$inc`, `$min`, `$max`, `$push`
-- Query operators: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$not`, `$and`, `$or`, `$nor`
+- Update operators: `$set`, `$unset`, `$inc`, `$mul`, `$min`, `$max`, `$rename`, `$currentDate`, `$push`, `$addToSet`, `$pop`, `$pull`, `$pullAll`
+- Query operators: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$regex`/`$options`, `$not`, `$and`, `$or`, `$nor`
 - Secondary indexes: `StringIndex` (`$eq`, `$in`) and `NumberIndex` (`$eq`, `$in`, `$gt`, `$gte`, `$lt`, `$lte`)
 - `count()` on cursor, `countDocuments()` on collection
 - `sort()` on cursor (up to 4 fields, ascending/descending, stable missing-value semantics)

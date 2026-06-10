@@ -90,6 +90,17 @@ export const CASES: BenchCase[] = [
   },
 
   {
+    name: "findByNameRegex (scan)",
+    warmup: 50,
+    iterations: 300,
+    run(adapter, iteration) {
+      // Regex full-collection scan; patterns cycle to avoid engine-side caching bias.
+      const patterns = ["^Ad", "race$", "^Ka.*e$", "a.+a"];
+      adapter.findByNameRegex(patterns[iteration % patterns.length]);
+    }
+  },
+
+  {
     name: "findByRole (index)",
     warmup: 100,
     iterations: 1_000,

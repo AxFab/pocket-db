@@ -79,6 +79,12 @@ export class JsonFileAdapter implements Adapter {
     return Array.from(this.data.values()).filter((doc) => doc.role === role);
   }
 
+  // Regex filter over the in-memory Map.
+  findByNameRegex(pattern: string): StoredDocument[] {
+    const regex = new RegExp(pattern);
+    return Array.from(this.data.values()).filter((doc) => regex.test(doc.name));
+  }
+
   updateOne(id: string, score: number): void {
     const doc = this.data.get(id);
     if (doc) {

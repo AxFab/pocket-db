@@ -86,6 +86,12 @@ export class LowDbAdapter implements Adapter {
     return this.db!.data.docs.filter((d) => d.role === role);
   }
 
+  // Regex filter over the in-memory array.
+  findByNameRegex(pattern: string): StoredDocument[] {
+    const regex = new RegExp(pattern);
+    return this.db!.data.docs.filter((d) => regex.test(d.name));
+  }
+
   updateOne(id: string, score: number): void {
     const doc = this.db!.data.docs.find((d) => d._id === id);
     if (doc) {

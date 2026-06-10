@@ -53,6 +53,28 @@ collection.find({ deletedAt: { $exists: false } })
 
 `$exists` is always evaluated in the residual pass; no index supports it.
 
+### `$regex`
+
+Matches documents where the field value is a string matching the regular
+expression. Non-string values (including missing fields) never match.
+
+The pattern can be a string (flags supplied via `$options`), a `RegExp`
+instance (flags on the RegExp itself), or a bare `RegExp` as shorthand for the
+whole condition.
+
+```ts
+collection.find({ name: { $regex: "^ada", $options: "i" } })
+collection.find({ name: { $regex: /^ada/i } })
+collection.find({ name: /^Ada/ })
+```
+
+Allowed flags are `i`, `m`, `s`, and `u`. The `g` and `y` flags are rejected at
+compile time because they make `RegExp.test` stateful (`lastIndex` carries over
+between calls). `$options` cannot be combined with a `RegExp` pattern — put the
+flags on the RegExp instead.
+
+`$regex` is always evaluated in the residual pass; no index supports it.
+
 ### `$and`
 
 Combines multiple sub-queries with logical AND. The result matches documents
@@ -71,8 +93,8 @@ Top-level fields in the same query object are already implicitly ANDed, so
 `$and` is only needed when multiple conditions target the same field or when
 explicit grouping is required.
 
-Unsupported operators (e.g. `$or`, `$not`, `$nor`) throw at query compilation
-time.
+Unsupported operators (e.g. `$where`, `$type`, `$size`) throw at query
+compilation time.
 
 ## Query Compilation
 
@@ -169,6 +191,45 @@ current value. Throws if the field does not exist or is not a number.
 collection.updateOne(id, { $max: { highScore: 9000 } })
 ```
 
+### `$mul`
+
+Multiplies a numeric field by the given factor. Throws if the field does not
+exist or is not a number.
+
+```ts
+collection.updateOne(id, { $mul: { price: 1.2 } })
+```
+
+### `$rename`
+
+Renames a field. A missing source field is a no-op; an existing target field
+is overwritten. The source and target names must differ.
+
+```ts
+collection.updateOne(id, { $rename: { nickname: "displayName" } })
+```
+
+### `$currentDate`
+
+Sets a field to the current date. The format is chosen per field:
+
+| Specification | Stored value |
+|---------------|--------------|
+| `true` or `{ $type: "date" }` | ISO-8601 string, e.g. `"2026-06-10T12:00:00.000Z"` |
+| `{ $type: "timestamp" }` | Unix epoch milliseconds (number) |
+
+```ts
+collection.updateOne(id, {
+  $currentDate: {
+    updatedAt: true,
+    modifiedAt: { $type: "date" },
+    touchedAt: { $type: "timestamp" }
+  }
+})
+```
+
+All fields in one `$currentDate` expression share the same clock reading.
+
 ### `$push`
 
 Appends a value to an existing array field. Throws if the field does not exist
@@ -178,10 +239,52 @@ or is not an array.
 collection.updateOne(id, { $push: { tags: "typescript" } })
 ```
 
+### `$addToSet`
+
+Appends a value to an existing array field only if no deep-equal element is
+already present. Throws if the field does not exist or is not an array.
+
+```ts
+collection.updateOne(id, { $addToSet: { tags: "typescript" } })
+```
+
+### `$pop`
+
+Removes the last (`1`) or first (`-1`) element of an existing array field.
+An empty array is a no-op. Throws if the field does not exist or is not an
+array, or if the direction is not `1` or `-1`.
+
+```ts
+collection.updateOne(id, { $pop: { queue: -1 } })  // remove first
+collection.updateOne(id, { $pop: { stack: 1 } })   // remove last
+```
+
+### `$pull`
+
+Removes all elements of an existing array field that equal a literal value, or
+that match an operator expression (the same operators as queries, evaluated
+against each element).
+
+```ts
+collection.updateOne(id, { $pull: { tags: "obsolete" } })
+collection.updateOne(id, { $pull: { scores: { $lt: 10 } } })
+collection.updateOne(id, { $pull: { tags: { $regex: "^tmp-" } } })
+```
+
+### `$pullAll`
+
+Removes all elements of an existing array field that equal any of the listed
+values (deep equality, like `$pull` with literals).
+
+```ts
+collection.updateOne(id, { $pullAll: { scores: [0, 1] } })
+```
+
 ## Immutability of `_id`
 
-The `_id` field cannot be modified by any update operator. Using `$set` or
-`$unset` on `_id` throws before any disk write occurs.
+The `_id` field cannot be modified by any update operator. Using `$set`,
+`$unset`, `$rename`, or `$currentDate` on `_id` (or renaming another field to
+`_id`) throws before any disk write occurs.
 
 ```ts
 collection.updateOne(id, { $set: { _id: "other" } }) // throws

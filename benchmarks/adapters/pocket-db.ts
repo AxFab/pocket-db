@@ -73,6 +73,11 @@ export class PocketDbAdapter implements Adapter {
     return this.col!.find({ role }).toArray() as unknown as StoredDocument[];
   }
 
+  // Unindexed $regex scan — full collection read + regex residual filter.
+  findByNameRegex(pattern: string): StoredDocument[] {
+    return this.col!.find({ name: { $regex: pattern } }).toArray() as unknown as StoredDocument[];
+  }
+
   updateOne(id: string, score: number): void {
     this.col!.updateOne(id, { $set: { score } });
   }
