@@ -1,0 +1,20 @@
+
+image: node:18-alpine
+
+stages:
+ - test
+ - build
+
+testing:
+  stage: test
+  scripts:
+    - npm run build:esm
+    - npm run test:only
+
+build_esm:
+  stage: build
+  scripts: npm run build:esm
+
+build_cjs:
+  stage: build
+  scripts: npm run build:cjs
