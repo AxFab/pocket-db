@@ -1,0 +1,34 @@
+
+image: node:18-alpine
+
+stages:
+ - test
+ - build
+ - publish
+
+testing:
+  stage: test
+  scripts:
+    - npm run build:esm
+    - npm run test:only
+
+build_esm:
+  stage: build
+  scripts: npm run build:esm
+
+build_cjs:
+  stage: build
+  scripts: npm run build:cjs
+
+publish_dry:
+  stage: publish
+  scripts: false
+
+# Download exemple repository
+# Make them use new release
+# Run tests on those exemples...
+
+# Update wiki...
+# NPM Publish
+# Create tag
+# Publish website...
