@@ -25,9 +25,11 @@
     "build:esm": "tsc -p tsconfig.json",
     "build:cjs": "tsc -p tsconfig.cjs.json && echo '{\"type\":\"commonjs\"}' > dist/cjs/src/package.json",
     "build": "npm run build:esm && npm run build:cjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
     "bench": "npm run build && node dist/benchmarks/bench.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run lint && npm run build"
   },
   "keywords": [
     "database",
@@ -44,13 +46,17 @@
     "url": "https://github.com/AxFab/pocket-db.git"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/lokijs": "^1.5.14",
     "@types/node": "^20.12.0",
     "better-sqlite3": "^12.10.0",
+    "eslint": "^9.39.4",
+    "globals": "^15.15.0",
     "lokijs": "^1.5.12",
     "lowdb": "^7.0.1",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.61.1"
   },
   "engines": {
     "node": ">=18"

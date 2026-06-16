@@ -68,7 +68,7 @@ export function runBenchmarks(adapters: Adapter[]): AdapterResult[] {
         const result = runCase(adapter, benchCase, initialIds);
         caseResults.set(benchCase.name, result);
         process.stdout.write(".");
-      } catch (error) {
+      } catch {
         caseResults.set(benchCase.name, { opsPerSecond: -1, totalMs: 0, iterations: 0 });
         process.stdout.write("!");
       }

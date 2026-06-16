@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pocketDb } from "../../src/index.js";
-import { generateId } from "../data.js";
 import type { Adapter, BenchDocument, StoredDocument } from "./adapter.js";
 import type { Collection, Database, OpenOptions } from "../../src/api/types.js";
 

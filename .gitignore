@@ -5,6 +5,7 @@ dist/
 node_modules/
 
 !*.ts
+!*.js
 !*.json
 !*.md
 !*.png

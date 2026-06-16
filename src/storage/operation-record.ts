@@ -1,8 +1,7 @@
 import {
   OPERATION_CRC32_BYTES,
   OPERATION_HEADER_BYTES,
-  OPERATION_IDENTIFIER_BYTES,
-  OPERATION_LENGTH_BYTES
+  OPERATION_IDENTIFIER_BYTES
 } from "./constants.js";
 import { crc32 } from "./crc32.js";
 

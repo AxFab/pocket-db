@@ -1,7 +1,6 @@
 import { closeSync, existsSync, fsyncSync, fstatSync, ftruncateSync, openSync, readSync, writeSync } from "node:fs";
 import {
   FILE_HEADER_BYTES,
-  FORMAT_HEADER_BYTES,
   FORMAT_MAJOR_VERSION,
   FORMAT_MINOR_VERSION,
   MAGIC_HEADER,

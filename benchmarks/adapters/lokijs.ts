@@ -9,9 +9,7 @@ import type { Adapter, BenchDocument, StoredDocument } from "./adapter.js";
 
 // LokiJS is a CommonJS module; use createRequire to load it from an ESM context.
 const require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const LokiCtor: typeof Loki = require("lokijs");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const LokiFsSyncAdapter = require("lokijs/src/loki-fs-sync-adapter.js");
 
 /**
@@ -120,19 +118,16 @@ export class LokiJsAdapter implements Adapter {
 
   // No index on `name` — falls back to a full collection scan.
   findByName(name: string): StoredDocument[] {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (this.col!.find({ name } as any) as LokiDoc[]).map(stripMeta);
   }
 
   // Uses the binary index on `role` for an accelerated scan.
   findByRole(role: string): StoredDocument[] {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (this.col!.find({ role } as any) as LokiDoc[]).map(stripMeta);
   }
 
   // LokiJS has native $regex support — full collection scan on `name`.
   findByNameRegex(pattern: string): StoredDocument[] {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (this.col!.find({ name: { $regex: new RegExp(pattern) } } as any) as LokiDoc[]).map(stripMeta);
   }
 
