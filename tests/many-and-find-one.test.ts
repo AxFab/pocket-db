@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("Collection insertMany, findOne, and deleteMany", () => {
   it("inserts multiple documents and returns their ids in insertion order", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
 
     const result = users.insertMany([
@@ -45,7 +45,7 @@ describe("Collection insertMany, findOne, and deleteMany", () => {
 
   it("finds the first matching document or null", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([
       { name: "Ada", role: "admin" },
@@ -60,7 +60,7 @@ describe("Collection insertMany, findOne, and deleteMany", () => {
 
   it("deletes all documents matching a query", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const result = users.insertMany([
       { name: "Ada", role: "admin" },
@@ -89,7 +89,7 @@ describe("Collection insertMany, findOne, and deleteMany", () => {
 
   it("deletes all documents when deleteMany receives no query", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([{ name: "Ada" }, { name: "Grace" }]);
 
@@ -106,7 +106,7 @@ describe("Collection insertMany, findOne, and deleteMany", () => {
 
   it("rebuilds insertMany and deleteMany effects when the database opens", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     const users = first.collection("users");
     users.insertMany([
       { name: "Ada", role: "admin" },
@@ -116,7 +116,7 @@ describe("Collection insertMany, findOne, and deleteMany", () => {
     users.deleteMany({ role: "admin" });
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     const loadedUsers = second.collection("users");
 
     assert.deepEqual(

@@ -12,7 +12,7 @@ import {
   SERIALIZATION_FORMAT
 } from "../src/storage/constants.js";
 import { FileStorage } from "../src/storage/file-storage.js";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -130,7 +130,7 @@ describe("file header", () => {
 describe("hol0 (hole operation) replay", () => {
   it("skips hol0 records and makes no change to the database state", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertOne({ name: "Ada" });
     db.close();
@@ -141,7 +141,7 @@ describe("hol0 (hole operation) replay", () => {
     storage.close();
 
     // Reopen — the hol0 must be silently skipped during replay.
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     const docs = reopened.collection("users").find({}).toArray();
     reopened.close();
 
@@ -151,7 +151,7 @@ describe("hol0 (hole operation) replay", () => {
 
   it("allows appending operations after hol0 without corrupting the log", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     db.collection("users");
     db.close();
 
@@ -160,11 +160,11 @@ describe("hol0 (hole operation) replay", () => {
     storage.close();
 
     // Now open via the full API and insert normally.
-    const db2 = open({ path });
+    const db2 = pocketDb({ path });
     db2.collection("users").insertOne({ name: "Grace" });
     db2.close();
 
-    const db3 = open({ path });
+    const db3 = pocketDb({ path });
     const docs = db3.collection("users").find({}).toArray();
     db3.close();
 

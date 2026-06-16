@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("Database collections", () => {
   it("creates a collection when it is not already loaded", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
 
     const users = db.collection("users");
 
@@ -35,12 +35,12 @@ describe("Database collections", () => {
 
   it("loads existing collections when the database opens", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     const created = first.collection("users");
     first.close();
 
     const sizeAfterCreation = statSync(path).size;
-    const second = open({ path });
+    const second = pocketDb({ path });
     const loaded = second.collection("users");
     second.close();
 

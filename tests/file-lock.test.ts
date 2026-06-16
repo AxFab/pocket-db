@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("file lock", () => {
   it("creates a lock file next to the database when opened", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
 
     assert.ok(existsSync(`${path}.lock`), "lock file should exist while the database is open");
 
@@ -31,19 +31,19 @@ describe("file lock", () => {
 
   it("removes the lock file when the database is closed", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     db.close();
 
     assert.ok(!existsSync(`${path}.lock`), "lock file should be removed after close()");
   });
 
-  it("throws when a second open() call targets the same file while the first is still open", () => {
+  it("throws when a second pocketDb() call targets the same file while the first is still open", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
 
     try {
       assert.throws(
-        () => open({ path }),
+        () => pocketDb({ path }),
         (err: unknown) => {
           assert.ok(err instanceof Error);
           assert.ok(
@@ -60,10 +60,10 @@ describe("file lock", () => {
 
   it("allows reopening after the first handle is closed", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     second.close();
 
     assert.ok(!existsSync(`${path}.lock`));
@@ -76,7 +76,7 @@ describe("file lock", () => {
     // which the lock implementation treats as a stale (dead) holder.
     writeFileSync(`${path}.lock`, "not-a-pid");
 
-    const db = open({ path });
+    const db = pocketDb({ path });
     db.close();
 
     assert.ok(!existsSync(`${path}.lock`));

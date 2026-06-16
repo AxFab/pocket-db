@@ -33,7 +33,7 @@ export function open(options: OpenOptions = {}): Database {
  * argument instead of an options object.
  *
  * ```ts
- * import { pocketDb } from "pocket-db";
+ * import { pocketDb } from "@axfab/pocket-db";
  * const db = pocketDb("./data.pdb");
  * ```
  *

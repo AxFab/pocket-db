@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("Collection find", () => {
   it("returns matching documents with next", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const ada = users.insertOne({ name: "Ada", age: 37 });
     users.insertOne({ name: "Grace", age: 85 });
@@ -41,7 +41,7 @@ describe("Collection find", () => {
 
   it("returns all matching documents with toArray", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertOne({ name: "Ada", age: 37 });
     users.insertOne({ name: "Grace", age: 85 });
@@ -59,7 +59,7 @@ describe("Collection find", () => {
 
   it("supports skip and limit", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertOne({ name: "Ada", age: 37 });
     users.insertOne({ name: "Grace", age: 85 });
@@ -77,7 +77,7 @@ describe("Collection find", () => {
 
   it("uses an offset snapshot created when find is called", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertOne({ name: "Ada" });
 
@@ -95,7 +95,7 @@ describe("Collection find", () => {
 
   it("reads replaced documents from the snapshot offset", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada" });
 
@@ -117,11 +117,11 @@ describe("Collection find", () => {
 
   it("rebuilds find candidates after reopening the database", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     first.collection("users").insertOne({ name: "Ada" });
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     const documents = second.collection("users").find({ name: { $exists: true } }).toArray();
 
     assert.deepEqual(

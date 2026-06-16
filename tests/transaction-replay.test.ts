@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 import { PUT_DOCUMENT_OPERATION, TRANSACTION_BEGIN_OPERATION, TRANSACTION_COMMIT_OPERATION } from "../src/storage/constants.js";
 import { createObjectId } from "../src/storage/document-id.js";
 import { encodePutDocumentPayload } from "../src/storage/document-operation.js";
@@ -27,7 +27,7 @@ afterEach(() => {
 describe("transaction replay", () => {
   it("ignores operations after transaction begin when commit is missing", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const collectionId = Buffer.from((users as any).id);
     db.close();
@@ -48,7 +48,7 @@ describe("transaction replay", () => {
     );
     storage.close();
 
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
 
     assert.deepEqual(reopened.collection("users").find({}).toArray(), []);
 
@@ -57,7 +57,7 @@ describe("transaction replay", () => {
 
   it("applies transaction operations after commit", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const collectionId = Buffer.from((users as any).id);
     db.close();
@@ -79,7 +79,7 @@ describe("transaction replay", () => {
     storage.appendOperation(TRANSACTION_COMMIT_OPERATION, Buffer.alloc(0));
     storage.close();
 
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
 
     assert.deepEqual(
       reopened.collection("users").find({}).toArray().map((document) => document.name),

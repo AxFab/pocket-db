@@ -73,7 +73,7 @@ The intended first-version recovery policy is:
 
 - if the last operation is truncated, ignore it, truncate the file to the last
   valid offset, emit a warning, and mark the database instance as recovered;
-- if a CRC check fails or a payload is invalid, follow the `open()` corruption
+- if a CRC check fails or a payload is invalid, follow the `pocketDb()` corruption
   option:
   - `warn`: ignore the invalid operation when this can be done safely;
   - `fail`: close the database and throw;
@@ -89,7 +89,7 @@ Neither truncation recovery nor the corruption option are implemented yet.
 The intended API should expose a durability option:
 
 ```ts
-open({ durability: "relaxed" | "strict" })
+pocketDb({ durability: "relaxed" | "strict" })
 ```
 
 - `relaxed`: write to the file descriptor without forcing an fsync after every

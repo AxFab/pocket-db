@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -29,7 +29,7 @@ function pluck<T>(docs: Record<string, unknown>[], field: string): T[] {
 
 describe("sort — string field", () => {
   it("sorts ascending", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ name: "charlie" }, { name: "alice" }, { name: "bob" }]);
 
@@ -39,7 +39,7 @@ describe("sort — string field", () => {
   });
 
   it("sorts descending", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ name: "charlie" }, { name: "alice" }, { name: "bob" }]);
 
@@ -51,7 +51,7 @@ describe("sort — string field", () => {
 
 describe("sort — number field", () => {
   it("sorts ascending", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ score: 30 }, { score: 10 }, { score: 20 }]);
 
@@ -61,7 +61,7 @@ describe("sort — number field", () => {
   });
 
   it("sorts descending", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ score: 30 }, { score: 10 }, { score: 20 }]);
 
@@ -73,7 +73,7 @@ describe("sort — number field", () => {
 
 describe("sort — boolean field", () => {
   it("sorts ascending: false before true", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ active: true }, { active: false }, { active: true }]);
 
@@ -83,7 +83,7 @@ describe("sort — boolean field", () => {
   });
 
   it("sorts descending: true before false", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ active: true }, { active: false }, { active: true }]);
 
@@ -95,7 +95,7 @@ describe("sort — boolean field", () => {
 
 describe("sort — _id field", () => {
   it("sorts by _id ascending (hex order = chronological)", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ v: 1 }, { v: 2 }, { v: 3 }]);
 
@@ -107,7 +107,7 @@ describe("sort — _id field", () => {
   });
 
   it("sorts by _id descending", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ v: 1 }, { v: 2 }, { v: 3 }]);
 
@@ -123,7 +123,7 @@ describe("sort — _id field", () => {
 
 describe("sort — multi-field", () => {
   it("applies secondary sort when primary values are equal", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([
       { role: "user", name: "zara" },
@@ -141,7 +141,7 @@ describe("sort — multi-field", () => {
   });
 
   it("supports mixed directions across fields", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([
       { group: "a", score: 10 },
@@ -160,7 +160,7 @@ describe("sort — multi-field", () => {
   });
 
   it("accepts exactly 4 sort fields (the maximum)", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertOne({ a: 1, b: 2, c: 3, d: 4 });
 
@@ -175,7 +175,7 @@ describe("sort — multi-field", () => {
 
 describe("sort — missing and null values", () => {
   it("missing field sorts first in ascending order", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ score: 20 }, { score: 10 }, {}]);
 
@@ -185,7 +185,7 @@ describe("sort — missing and null values", () => {
   });
 
   it("missing field sorts last in descending order", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ score: 20 }, { score: 10 }, {}]);
 
@@ -195,7 +195,7 @@ describe("sort — missing and null values", () => {
   });
 
   it("null value sorts first in ascending order (same as missing)", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ score: 20 }, { score: null }, { score: 5 }]);
 
@@ -205,7 +205,7 @@ describe("sort — missing and null values", () => {
   });
 
   it("null value sorts last in descending order (same as missing)", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ score: 20 }, { score: null }, { score: 5 }]);
 
@@ -219,7 +219,7 @@ describe("sort — missing and null values", () => {
 
 describe("sort — cross-type ordering", () => {
   it("orders boolean < number < string across mixed documents", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([
       { val: "hello" },
@@ -237,7 +237,7 @@ describe("sort — cross-type ordering", () => {
 
 describe("sort — combined with limit and skip", () => {
   it("limit is applied after sort", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ n: 5 }, { n: 1 }, { n: 3 }, { n: 2 }, { n: 4 }]);
 
@@ -247,7 +247,7 @@ describe("sort — combined with limit and skip", () => {
   });
 
   it("skip is applied after sort", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ n: 5 }, { n: 1 }, { n: 3 }, { n: 2 }, { n: 4 }]);
 
@@ -257,7 +257,7 @@ describe("sort — combined with limit and skip", () => {
   });
 
   it("skip + limit together slice the sorted result", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ n: 5 }, { n: 1 }, { n: 3 }, { n: 2 }, { n: 4 }]);
 
@@ -267,7 +267,7 @@ describe("sort — combined with limit and skip", () => {
   });
 
   it("skip + limit together slice a descending sorted result", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ n: 5 }, { n: 1 }, { n: 3 }, { n: 2 }, { n: 4 }]);
 
@@ -278,7 +278,7 @@ describe("sort — combined with limit and skip", () => {
   });
 
   it("chaining order does not affect semantics: sort().limit().skip()", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ n: 5 }, { n: 1 }, { n: 3 }, { n: 2 }, { n: 4 }]);
 
@@ -293,7 +293,7 @@ describe("sort — combined with limit and skip", () => {
 
 describe("sort — interaction with count()", () => {
   it("count() returns total matches and does not trigger the sort", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ n: 3 }, { n: 1 }, { n: 2 }]);
 
@@ -311,7 +311,7 @@ describe("sort — interaction with count()", () => {
 
 describe("sort — combined with query", () => {
   it("sorts only the documents that match the query", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([
       { role: "admin", score: 5 },
@@ -330,7 +330,7 @@ describe("sort — combined with query", () => {
 
 describe("sort — validation", () => {
   it("throws when sort specification is empty", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertOne({ x: 1 });
 
@@ -342,7 +342,7 @@ describe("sort — validation", () => {
   });
 
   it("throws when more than 4 fields are specified", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertOne({ a: 1 });
 
@@ -354,7 +354,7 @@ describe("sort — validation", () => {
   });
 
   it("throws when direction is not 1 or -1", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertOne({ x: 1 });
 
@@ -366,7 +366,7 @@ describe("sort — validation", () => {
   });
 
   it("throws when a sorted field contains an array value", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ tags: ["a", "b"] }, { tags: ["c"] }]);
 
@@ -378,7 +378,7 @@ describe("sort — validation", () => {
   });
 
   it("throws when a sorted field contains an object value", () => {
-    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const db = pocketDb({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");
     col.insertMany([{ meta: { x: 1 } }, { meta: { x: 2 } }]);
 

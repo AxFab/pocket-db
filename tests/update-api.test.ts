@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("Collection updateOne and updateMany", () => {
   it("updates one document by id and appends a put document operation", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada", count: 1 });
     const sizeBeforeUpdate = statSync(path).size;
@@ -49,7 +49,7 @@ describe("Collection updateOne and updateMany", () => {
 
   it("updates one document matching a query", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([
       { name: "Ada", role: "admin", count: 1 },
@@ -73,7 +73,7 @@ describe("Collection updateOne and updateMany", () => {
 
   it("returns an empty update result when updateOne matches nothing", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertOne({ name: "Ada", count: 1 });
     const sizeBeforeUpdate = statSync(path).size;
@@ -92,7 +92,7 @@ describe("Collection updateOne and updateMany", () => {
 
   it("updates all documents matching a query from a snapshot", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([
       { name: "Ada", role: "admin", count: 1, tags: ["engine"] },
@@ -130,13 +130,13 @@ describe("Collection updateOne and updateMany", () => {
 
   it("keeps updated documents after reopening the database", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     const users = first.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada", count: 1 });
     users.updateOne(insertedId, { $max: { count: 10 } });
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     const loadedUsers = second.collection("users");
 
     assert.deepEqual(loadedUsers.findOne({ _id: insertedId }), {
@@ -150,7 +150,7 @@ describe("Collection updateOne and updateMany", () => {
 
   it("rejects updates that mutate _id", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada" });
 

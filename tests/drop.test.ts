@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("Collection drop", () => {
   it("drops a collection and removes all its documents from queries", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([{ name: "Ada" }, { name: "Grace" }]);
 
@@ -36,7 +36,7 @@ describe("Collection drop", () => {
 
   it("removes the collection from the database registry so the next call recreates it fresh", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertOne({ name: "Ada" });
 
@@ -50,7 +50,7 @@ describe("Collection drop", () => {
 
   it("prevents write operations on a dropped collection", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.drop();
 
@@ -68,14 +68,14 @@ describe("Collection drop", () => {
 
   it("replays drop collection and rebuilds state correctly on reopen", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     first.collection("users").insertMany([{ name: "Ada" }, { name: "Grace" }]);
     first.collection("users").drop();
     const recreated = first.collection("users");
     recreated.insertOne({ name: "Margaret" });
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     const loaded = second.collection("users");
 
     assert.deepEqual(
@@ -88,14 +88,14 @@ describe("Collection drop", () => {
 
   it("replays drop collection that had indexes without error", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     const users = first.collection("users");
     users.createIndex("role", { type: "string" });
     users.insertMany([{ name: "Ada", role: "admin" }]);
     users.drop();
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     const loaded = second.collection("users");
 
     assert.deepEqual(loaded.indexes, []);
@@ -108,7 +108,7 @@ describe("Collection drop", () => {
 describe("Collection dropIndex", () => {
   it("drops an existing index and removes it from the index list", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.createIndex("role", { type: "string" });
     users.createIndex("age", { type: "number" });
@@ -123,7 +123,7 @@ describe("Collection dropIndex", () => {
 
   it("queries still return correct results after an index is dropped", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([
       { name: "Ada", role: "admin" },
@@ -143,7 +143,7 @@ describe("Collection dropIndex", () => {
 
   it("rejects dropIndex when no index exists on that field", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
 
     assert.throws(
@@ -156,7 +156,7 @@ describe("Collection dropIndex", () => {
 
   it("replays dropIndex and rebuilds the remaining indexes correctly on reopen", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     const users = first.collection("users");
     users.insertMany([{ name: "Ada", role: "admin", age: 37 }]);
     users.createIndex("role", { type: "string" });
@@ -164,7 +164,7 @@ describe("Collection dropIndex", () => {
     users.dropIndex("role");
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     const loaded = second.collection("users");
 
     assert.deepEqual(loaded.indexes, [{ field: "age", type: "number" }]);
@@ -178,7 +178,7 @@ describe("Collection dropIndex", () => {
 
   it("allows recreating an index after it has been dropped", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([{ name: "Ada", role: "admin" }]);
     users.createIndex("role", { type: "string" });

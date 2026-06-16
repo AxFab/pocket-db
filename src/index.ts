@@ -1,4 +1,4 @@
-export { open, pocketDb } from "./api/open.js";
+export { pocketDb } from "./api/open.js";
 export type {
   Collection,
   CollectionStats,

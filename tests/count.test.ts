@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("cursor count() and countDocuments()", () => {
   it("count() returns 0 on an empty collection", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const col = db.collection("items");
 
     assert.equal(col.find().count(), 0);
@@ -33,7 +33,7 @@ describe("cursor count() and countDocuments()", () => {
 
   it("count() returns the total number of inserted documents (no query)", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const col = db.collection("items");
 
     col.insertMany([{ x: 1 }, { x: 2 }, { x: 3 }]);
@@ -46,7 +46,7 @@ describe("cursor count() and countDocuments()", () => {
 
   it("count() applies the residual query filter", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const col = db.collection("items");
 
     col.insertMany([
@@ -67,7 +67,7 @@ describe("cursor count() and countDocuments()", () => {
 
   it("count() uses the index candidate set (secondary index narrows candidates)", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const col = db.collection("items");
 
     col.createIndex("role", { type: "string" });
@@ -85,7 +85,7 @@ describe("cursor count() and countDocuments()", () => {
 
   it("count() does NOT respect skip() or limit() — returns the full match set", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const col = db.collection("items");
 
     col.insertMany([{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }, { n: 5 }]);
@@ -102,7 +102,7 @@ describe("cursor count() and countDocuments()", () => {
 
   it("count() does not advance the cursor — next() still works after count()", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const col = db.collection("items");
 
     col.insertMany([{ v: 10 }, { v: 20 }, { v: 30 }]);
@@ -119,7 +119,7 @@ describe("cursor count() and countDocuments()", () => {
 
   it("countDocuments() reflects deletions correctly", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const col = db.collection("items");
 
     const { insertedIds } = col.insertMany([{ k: 1 }, { k: 2 }, { k: 3 }]);
@@ -139,13 +139,13 @@ describe("cursor count() and countDocuments()", () => {
     const path = join(createTempDirectory(), "test.pdb");
 
     {
-      const db = open({ path });
+      const db = pocketDb({ path });
       const col = db.collection("items");
       col.insertMany([{ a: 1 }, { a: 2 }]);
       db.close();
     }
 
-    const db = open({ path });
+    const db = pocketDb({ path });
     const col = db.collection("items");
     assert.equal(col.countDocuments(), 2);
     db.close();

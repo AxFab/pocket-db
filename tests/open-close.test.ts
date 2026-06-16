@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 import {
   FILE_HEADER_BYTES,
   FORMAT_MAJOR_VERSION,
@@ -31,7 +31,7 @@ afterEach(() => {
 describe("durability option", () => {
   it('opens with durability "relaxed" and writes succeed without fsync', () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path, durability: "relaxed" });
+    const db = pocketDb({ path, durability: "relaxed" });
     const col = db.collection("items");
     const result = col.insertOne({ name: "a" });
     db.close();
@@ -40,7 +40,7 @@ describe("durability option", () => {
 
   it('opens with durability "strict" and writes succeed with fsync', () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path, durability: "strict" });
+    const db = pocketDb({ path, durability: "strict" });
     const col = db.collection("items");
     const result = col.insertOne({ name: "b" });
     db.close();
@@ -49,7 +49,7 @@ describe("durability option", () => {
 
   it('defaults to "relaxed" when durability is omitted', () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const col = db.collection("items");
     const result = col.insertOne({ name: "c" });
     db.close();
@@ -58,11 +58,11 @@ describe("durability option", () => {
 
   it('strict mode data survives a close/reopen cycle', () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path, durability: "strict" });
+    const db = pocketDb({ path, durability: "strict" });
     const id = db.collection("items").insertOne({ x: 42 }).insertedId;
     db.close();
 
-    const db2 = open({ path, durability: "strict" });
+    const db2 = pocketDb({ path, durability: "strict" });
     const doc = db2.collection("items").findOne({ _id: id });
     db2.close();
     assert.deepEqual(doc, { _id: id, x: 42 });
@@ -73,7 +73,7 @@ describe("open", () => {
   it("creates a database file and writes the full 12-byte file header", () => {
     const path = join(createTempDirectory(), "test.pdb");
 
-    const db = open({ path });
+    const db = pocketDb({ path });
     db.close();
 
     const raw = readFileSync(path);
@@ -88,10 +88,10 @@ describe("open", () => {
   it("opens an existing database file when the magic header is valid", () => {
     const path = join(createTempDirectory(), "test.pdb");
 
-    const first = open({ path });
+    const first = pocketDb({ path });
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     second.close();
 
     assert.equal(readFileSync(path).subarray(0, MAGIC_HEADER_BYTES.byteLength).toString("utf8"), MAGIC_HEADER);

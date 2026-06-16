@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { open } from "../../src/index.js";
+import { pocketDb } from "../../src/index.js";
 import { generateId } from "../data.js";
 import type { Adapter, BenchDocument, StoredDocument } from "./adapter.js";
 import type { Collection, Database, OpenOptions } from "../../src/api/types.js";
@@ -41,7 +41,7 @@ export class PocketDbAdapter implements Adapter {
       opts.serialization = 'bson'
     else if (this.name.includes('amf3'))
       opts.serialization = 'amf3'
-    this.db = open(opts);
+    this.db = pocketDb(opts);
     this.col = this.db.collection("docs");
     this.col.createIndex("role", { type: "string" });
 

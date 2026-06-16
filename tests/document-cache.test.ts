@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 import { DocumentCache } from "../src/api/document-cache.js";
 
 const tempDirectories: string[] = [];
@@ -129,7 +129,7 @@ describe("DocumentCache (unit)", () => {
 describe("Collection hot-document cache", () => {
   it("is disabled by default", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
 
     assert.equal(users.cacheStats(), null);
@@ -139,7 +139,7 @@ describe("Collection hot-document cache", () => {
 
   it("primes the cache on insert and serves reads from it", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.enableCache(1_000_000);
 
@@ -155,7 +155,7 @@ describe("Collection hot-document cache", () => {
 
   it("warms from cold when enabled after inserts", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada" });
 
@@ -175,7 +175,7 @@ describe("Collection hot-document cache", () => {
 
   it("keeps a document hot across updates", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.enableCache(1_000_000);
 
@@ -191,7 +191,7 @@ describe("Collection hot-document cache", () => {
 
   it("invalidates a deleted document", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.enableCache(1_000_000);
 
@@ -207,7 +207,7 @@ describe("Collection hot-document cache", () => {
 
   it("preserves cursor snapshot semantics with the cache enabled", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.enableCache(1_000_000);
 
@@ -232,7 +232,7 @@ describe("Collection hot-document cache", () => {
 
   it("returns independent objects that do not corrupt the cache when mutated", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.enableCache(1_000_000);
 
@@ -253,7 +253,7 @@ describe("Collection hot-document cache", () => {
 
   it("disableCache frees the cache and falls back to disk reads", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.enableCache(1_000_000);
 

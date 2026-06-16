@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 import { DELETE_DOCUMENT_OPERATION, FILE_HEADER_BYTES, HOLE_OPERATION, PUT_DOCUMENT_OPERATION, TRANSACTION_BEGIN_OPERATION } from "../src/storage/constants.js";
 import { createObjectId, objectIdFromHex } from "../src/storage/document-id.js";
 import { encodeDeleteDocumentPayload, encodePutDocumentPayload } from "../src/storage/document-operation.js";
@@ -31,7 +31,7 @@ function fileSize(path: string): number {
 describe("compact — basic correctness", () => {
   it("reduces file size after inserting and deleting documents", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada" });
     users.deleteOne(insertedId);
@@ -46,7 +46,7 @@ describe("compact — basic correctness", () => {
 
   it("reduces file size after updating a document (old version discarded)", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada", age: 30 });
     users.updateOne(insertedId, { $set: { age: 31 } });
@@ -61,7 +61,7 @@ describe("compact — basic correctness", () => {
 
   it("compact on a clean file (no dead records) does not corrupt data", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([{ name: "Ada" }, { name: "Grace" }]);
     const sizeBeforeCompact = fileSize(path);
@@ -79,7 +79,7 @@ describe("compact — basic correctness", () => {
 
   it("compact on an empty database produces a file of exactly FILE_HEADER_BYTES", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     db.compact();
     db.close();
 
@@ -88,7 +88,7 @@ describe("compact — basic correctness", () => {
 
   it("removes hol0 records during compaction", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     db.collection("users").insertOne({ name: "Ada" });
     db.close();
 
@@ -99,7 +99,7 @@ describe("compact — basic correctness", () => {
 
     const sizeWithHole = fileSize(path);
 
-    const db2 = open({ path });
+    const db2 = pocketDb({ path });
     db2.compact();
     db2.close();
 
@@ -111,7 +111,7 @@ describe("compact — basic correctness", () => {
 describe("compact — live data preserved", () => {
   it("all surviving documents are still readable after compact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([{ name: "Ada" }, { name: "Grace" }, { name: "Margaret" }]);
     users.deleteOne({ name: "Grace" });
@@ -125,7 +125,7 @@ describe("compact — live data preserved", () => {
 
   it("documents keep correct field values after compact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada", age: 30, role: "admin" });
     users.updateOne(insertedId, { $set: { age: 37 } });
@@ -142,7 +142,7 @@ describe("compact — live data preserved", () => {
 
   it("_id values survive compact intact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada" });
 
@@ -158,14 +158,14 @@ describe("compact — live data preserved", () => {
 describe("compact — reopen after compact", () => {
   it("database reopens correctly after compact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([{ name: "Ada" }, { name: "Grace" }]);
     users.deleteOne({ name: "Grace" });
     db.compact();
     db.close();
 
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     const names = reopened.collection("users").find({}).toArray().map((d) => d.name);
     reopened.close();
 
@@ -174,7 +174,7 @@ describe("compact — reopen after compact", () => {
 
   it("new insertions after compact go to correct file offsets", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertOne({ name: "Ada" });
     db.compact();
@@ -182,7 +182,7 @@ describe("compact — reopen after compact", () => {
     const { insertedId } = users.insertOne({ name: "Grace" });
     db.close();
 
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     const doc = reopened.collection("users").findOne({ _id: insertedId });
     reopened.close();
 
@@ -192,7 +192,7 @@ describe("compact — reopen after compact", () => {
 
   it("multiple compactions are idempotent", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([{ name: "Ada" }, { name: "Grace" }]);
     users.deleteOne({ name: "Grace" });
@@ -212,7 +212,7 @@ describe("compact — reopen after compact", () => {
 
   it("update operations are gone from file and correct version is returned after reopen", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada", version: 1 });
     users.updateOne(insertedId, { $set: { version: 2 } });
@@ -220,7 +220,7 @@ describe("compact — reopen after compact", () => {
     db.compact();
     db.close();
 
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     const doc = reopened.collection("users").findOne({ _id: insertedId });
     reopened.close();
 
@@ -232,7 +232,7 @@ describe("compact — reopen after compact", () => {
 describe("compact — secondary indexes", () => {
   it("string index works correctly after compact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.createIndex("role", { type: "string" });
     users.insertMany([
@@ -251,7 +251,7 @@ describe("compact — secondary indexes", () => {
 
   it("number index works correctly after compact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.createIndex("age", { type: "number" });
     users.insertMany([
@@ -270,7 +270,7 @@ describe("compact — secondary indexes", () => {
 
   it("secondary indexes survive reopen after compact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.createIndex("role", { type: "string" });
     users.insertMany([
@@ -280,7 +280,7 @@ describe("compact — secondary indexes", () => {
     db.compact();
     db.close();
 
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     const col = reopened.collection("users");
     assert.deepEqual(col.indexes, [{ field: "role", type: "string" }]);
     const admins = col.find({ role: "admin" }).toArray().map((d) => d.name);
@@ -292,13 +292,13 @@ describe("compact — secondary indexes", () => {
 describe("compact — collection and index drop", () => {
   it("dropped collection is absent from file after compact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     db.collection("users").insertMany([{ name: "Ada" }, { name: "Grace" }]);
     db.collection("users").drop();
     db.compact();
     db.close();
 
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     // Re-accessing the collection creates a fresh empty one.
     const users = reopened.collection("users");
     assert.deepEqual(users.find({}).toArray(), []);
@@ -307,7 +307,7 @@ describe("compact — collection and index drop", () => {
 
   it("dropped index is absent from file after compact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.createIndex("role", { type: "string" });
     users.createIndex("age", { type: "number" });
@@ -316,7 +316,7 @@ describe("compact — collection and index drop", () => {
     db.compact();
     db.close();
 
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     const col = reopened.collection("users");
     assert.deepEqual(col.indexes, [{ field: "age", type: "number" }]);
     reopened.close();
@@ -324,7 +324,7 @@ describe("compact — collection and index drop", () => {
 
   it("transaction boundaries (txnb/txnc) are removed from file after compact", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     // insertMany wraps in a transaction.
     db.collection("users").insertMany([{ name: "Ada" }, { name: "Grace" }]);
     const sizeBeforeCompact = fileSize(path);
@@ -348,7 +348,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     const path = join(createTempDirectory(), "test.pdb");
 
     // Create the collection via the normal API so its ncl1 record is on disk.
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertOne({ name: "Ada" }); // committed, must survive
     const collectionId = Buffer.from((users as any).id);
@@ -381,7 +381,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     const sizeWithOrphans = fileSize(path);
 
     // Reopen: replay must silently discard the orphaned records.
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     const docsAfterReopen = reopened.collection("users").find({}).toArray();
     assert.deepEqual(
       docsAfterReopen.map((d) => d.name),
@@ -405,7 +405,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     reopened.close();
 
     // Verify on a fresh reopen after compact.
-    const final = open({ path });
+    const final = pocketDb({ path });
     const finalDocs = final.collection("users").find({}).toArray();
     final.close();
 
@@ -420,7 +420,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     // All records are orphaned — compact must leave only the file header and ncl1.
     const path = join(createTempDirectory(), "test.pdb");
 
-    const db = open({ path });
+    const db = pocketDb({ path });
     const collectionId = Buffer.from((db.collection("users") as any).id);
     db.close();
 
@@ -437,13 +437,13 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     );
     storage.close();
 
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     assert.deepEqual(reopened.collection("users").find({}).toArray(), []);
 
     reopened.compact();
     reopened.close();
 
-    const final = open({ path });
+    const final = pocketDb({ path });
     assert.deepEqual(final.collection("users").find({}).toArray(), []);
     final.close();
   });
@@ -453,7 +453,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     // transaction must not replace the committed version in the file.
     const path = join(createTempDirectory(), "test.pdb");
 
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada", version: 1 });
     const collectionId = Buffer.from((users as any).id);
@@ -477,7 +477,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     const sizeWithOrphan = fileSize(path);
 
     // Reopen: replay must ignore the uncommitted update.
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     const docAfterReopen = reopened.collection("users").findOne({ _id: insertedId });
     assert.ok(docAfterReopen, "committed document must still exist");
     assert.equal(docAfterReopen.version, 1, "version must be the committed one, not the orphaned update");
@@ -493,7 +493,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     reopened.close();
 
     // Final reopen: the committed version must still be the only one.
-    const final = open({ path });
+    const final = pocketDb({ path });
     const docFinal = final.collection("users").findOne({ _id: insertedId });
     final.close();
 
@@ -506,7 +506,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     // committed document from the file.
     const path = join(createTempDirectory(), "test.pdb");
 
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada" });
     const collectionId = Buffer.from((users as any).id);
@@ -528,7 +528,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     const sizeWithOrphan = fileSize(path);
 
     // Reopen: the uncommitted delete must be ignored; document still visible.
-    const reopened = open({ path });
+    const reopened = pocketDb({ path });
     const docAfterReopen = reopened.collection("users").findOne({ _id: insertedId });
     assert.ok(docAfterReopen, "document must still exist — delete was not committed");
     assert.equal(docAfterReopen.name, "Ada");
@@ -544,7 +544,7 @@ describe("compact — interrupted transactions (crash simulation)", () => {
     reopened.close();
 
     // Final reopen: document must still be present after compact.
-    const final = open({ path });
+    const final = pocketDb({ path });
     const docFinal = final.collection("users").findOne({ _id: insertedId });
     final.close();
 

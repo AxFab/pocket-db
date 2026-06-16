@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("Collection insertOne", () => {
   it("appends a document operation and adds the document to the primary index", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const sizeBeforeInsert = statSync(path).size;
 
@@ -42,12 +42,12 @@ describe("Collection insertOne", () => {
 
   it("rebuilds the primary index when the database opens", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     const users = first.collection("users");
     const result = users.insertOne({ name: "Ada" });
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     const loadedUsers = second.collection("users");
 
     assert.notEqual(loadedUsers.findOne({ _id: result.insertedId }), null);
@@ -57,7 +57,7 @@ describe("Collection insertOne", () => {
 
   it("accepts a user-provided ObjectId-like _id", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const id = "00112233445566778899aabb";
 
@@ -75,7 +75,7 @@ describe("Collection insertOne", () => {
 
   it("rejects duplicate or invalid user-provided ids", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const id = "00112233445566778899aabb";
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 import { FILE_HEADER_BYTES } from "../src/storage/constants.js";
 
 const tempDirectories: string[] = [];
@@ -15,7 +15,7 @@ function createTempDirectory(): string {
 }
 
 function openDb() {
-  return open({ path: join(createTempDirectory(), "test.pdb") });
+  return pocketDb({ path: join(createTempDirectory(), "test.pdb") });
 }
 
 afterEach(() => {

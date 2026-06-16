@@ -26,7 +26,7 @@
 
 ## V2 : performance and robustness.
 
-- durability mode strict/relaxed ;
+- durability mode strict/relaxed ; OK
 - automatic compaction ;
 - uniq index ;
 - query planner improvment ;
@@ -47,49 +47,18 @@
 
 - on Collection distinct(field, query) ;
 - hideIndex(name)  getIndex() ;
-- stats() ;
-- binary serialization for faster parsing ;
-- use file page cache to improve read ops ;
+- stats() ; OK
+- binary serialization for faster parsing ; TRIED
 - read file using page cache ;
-- stats() give
-```
-{
-  liveSlots: 0,
-  totalSlots: 0,
-  ratioSlots: 0, // (= (total - live / total)),
-  collections: [
-    {
-      name: '',
-      documents: #count,
-      indexes: [
-        { name: '', type: '' }
-      ]
-    }
-  ]
-}
-```
 
 ## Update operator
 
 https://www.mongodb.com/docs/manual/reference/mql/update/#std-label-update-operators
 
- - `$currentDate`. Sets the value of a field to current date. We need an options to know the format
- - `$mul`. Multiplies the value of the field by the specified amount.
- - `$rename` Renames a field.
-
- - `$addToSet` Adds elements to an array only if they do not already exist in the set.
- - `$pop` Removes the first or last item of an array.
- - `$pull/pullAll` Removes all array elements that match a specified query.
- - `$regex` Regexp `str.test(regex)` (don't allow /g or /y)
-
 ## Sorting
 
 https://www.mongodb.com/docs/manual/reference/method/cursor.sort/
 
-
 ## Predicate clause
 
 https://www.mongodb.com/docs/manual/reference/mql/query-predicates/
-
-- `$type` Matches documents if a field is of the specified type.
-- `$regex` Matches documents where values match a specified regular expression.

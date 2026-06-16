@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { open } from "../src/index.js";
+import { pocketDb } from "../src/index.js";
 
 const tempDirectories: string[] = [];
 
@@ -22,7 +22,7 @@ afterEach(() => {
 describe("Collection indexes", () => {
   it("creates a string index and keeps query results correct", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([
       { name: "Ada", role: "admin" },
@@ -54,7 +54,7 @@ describe("Collection indexes", () => {
 
   it("uses the primary index definition for _id queries without exposing it as a secondary index", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     const { insertedId } = users.insertOne({ name: "Ada" });
 
@@ -71,7 +71,7 @@ describe("Collection indexes", () => {
 
   it("creates a number index and supports equality and range predicates", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.insertMany([
       { name: "Ada", age: 37 },
@@ -101,7 +101,7 @@ describe("Collection indexes", () => {
 
   it("maintains indexes after insert, replace, update, and delete", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.createIndex("role", { type: "string" });
     users.createIndex("score", { type: "number" });
@@ -131,7 +131,7 @@ describe("Collection indexes", () => {
 
   it("persists index definitions and rebuilds indexes when the database opens", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const first = open({ path });
+    const first = pocketDb({ path });
     const users = first.collection("users");
     users.insertMany([
       { name: "Ada", role: "admin" },
@@ -141,7 +141,7 @@ describe("Collection indexes", () => {
     users.createIndex("role", { type: "string" });
     first.close();
 
-    const second = open({ path });
+    const second = pocketDb({ path });
     const loadedUsers = second.collection("users");
 
     assert.deepEqual(loadedUsers.indexes, [{ field: "role", type: "string" }]);
@@ -155,7 +155,7 @@ describe("Collection indexes", () => {
 
   it("does not append another operation when creating an existing index", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.createIndex("role", { type: "string" });
     const sizeAfterFirstCreate = statSync(path).size;
@@ -169,7 +169,7 @@ describe("Collection indexes", () => {
 
   it("rejects invalid index definitions", () => {
     const path = join(createTempDirectory(), "test.pdb");
-    const db = open({ path });
+    const db = pocketDb({ path });
     const users = db.collection("users");
     users.createIndex("role", { type: "string" });
 

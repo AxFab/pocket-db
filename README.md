@@ -1,6 +1,9 @@
 
 <p align="center">
-  <img src="docs/pocket-db.svg" alt="pocket-db" width="300" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/pocket-db-dk.svg">
+    <img src="docs/pocket-db.svg" alt="pocket-db" width="300">
+  </picture>
 </p>
 
 **Pocket DB** — the local database for Electron, desktop and CLI apps.
@@ -66,7 +69,7 @@ No native binaries. No optional dependencies. Pure TypeScript compiled to ESM.
 ## Quick start
 
 ```ts
-import { pocketDb } from "pocket-db";
+import { pocketDb } from "@axfab/pocket-db";
 
 const db = pocketDb("./data.pdb");
 const users = db.collection("users");
@@ -119,7 +122,7 @@ This is a deliberate guarantee: some in-memory stores return references to their
 ### Opening a database
 
 ```ts
-import { pocketDb } from "pocket-db";
+import { pocketDb } from "@axfab/pocket-db";
 const db = pocketDb("./data.pdb");
 ```
 
@@ -355,7 +358,7 @@ After compaction, all in-memory indexes are refreshed automatically.
 
 ## File locking
 
-`open()` creates a `.lock` file next to the database file. A second `open()` on the same path from a different process will throw. Stale locks left by crashed processes are detected via PID check and cleared automatically.
+`pocketDb()` creates a `.lock` file next to the database file. A second `pocketDb()` on the same path from a different process will throw. Stale locks left by crashed processes are detected via PID check and cleared automatically.
 
 Pocket DB is designed for **single-process use**. Multiple concurrent writers on the same file are not supported.
 
@@ -366,7 +369,7 @@ Pocket DB is designed for **single-process use**. Multiple concurrent writers on
 Pocket DB is written in TypeScript and ships its own type declarations. All public types are exported from the package root:
 
 ```ts
-import { open, pocketDb } from "pocket-db";
+import { pocketDb } from "@axfab/pocket-db";
 import type {
   Database, Collection, Cursor,
   InsertOneResult, InsertManyResult,
@@ -375,7 +378,7 @@ import type {
   CreateIndexResult, DropIndexResult, DropResult,
   IndexInfo, OpenOptions, SortDirection,
   DocumentCacheStats
-} from "pocket-db";
+} from "@axfab/pocket-db";
 ```
 
 ---
@@ -405,20 +408,23 @@ durable.
 
 ```
 Benchmark results — 1,000 documents
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-Operation                        pocket-db   sqlite (memory)     sqlite (file)         json-file             lowdb            lokijs
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-insertOne                        198,177           226,278 *           4,421             3,893             2,256             1,004
-insertMany (100)                   2,345             2,963 *             402               788               628               264
-findById                         142,776         1,064,774           248,942        12,532,585 *         321,548         4,061,606
-findAll                               96               361               361           115,774           870,822 *           1,179
-findByName (scan)                     97               536               524            19,579            24,235 *           8,222
-findByRole (index)                   277               884               887            18,527            21,796 *           3,215
-updateOne                         97,889           423,072 *           2,675               784               566               188
-deleteOne                        454,402           465,026 *           5,551               924               663               220
-countAll                          12,038         2,233,389           285,285        42,553,191 *      34,914,251        37,348,273
-sortByScore (desc)                    91               293               293             4,947             5,099 *           1,123
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Operation                      pocket-db         pocket-db         pocket-db          pocket-db        pocket-db            sqlite           sqlite          json-file           lowdb            lokijs
+                           (strict-json)    (relaxed-json) (relaxed-json-cache) (relaxed-bson).   (relaxed-amf3)          (memory)           (file)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+insertOne                            339           233,627           253,834 *         203,173           210,416           204,701             4,040             4,314             2,492             1,101
+insertMany (100)                       3             2,343             2,505             2,129             2,214             2,715 *             753             1,042               812               276
+findById                          47,028           224,255           618,972           187,711           180,177         1,022,015           237,400        12,121,212 *         319,331         3,745,908
+findByIdHot (16)                 135,115           249,159           486,541           213,009           214,479         1,212,134           245,987        21,145,404 *      11,411,174         7,277,131
+findAll                               95                92               145                63                64               341               357           116,720           890,869 *           1,131
+findByName (scan)                     92                90               142                62                63               529               512            19,977            24,299 *           7,975
+findByNameRegex (scan)                91                89               139                62                63               328               328             7,905             8,666 *           3,561
+findByRole (index)                   260               257               394               182               184               885               881            18,262            22,068 *           3,104
+updateOne                            338           112,893           142,300            98,013            94,681           381,764 *           4,920               878               622               192
+deleteOne                            399           392,242           492,308           529,295 *         482,736           424,654             5,353             1,008               712               229
+countAll                           7,776            10,992            10,461            11,648            10,688         2,188,263           278,247        40,227,851 *      38,684,720        37,535,001
+sortByScore (desc)                    87                86               135                61                60               289               290             4,921             5,043 *           1,110
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 All values in ops/sec.  * = fastest for this operation.
 ```
 
