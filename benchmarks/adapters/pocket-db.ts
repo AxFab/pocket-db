@@ -6,16 +6,26 @@ import { generateId } from "../data.js";
 import type { Adapter, BenchDocument, StoredDocument } from "./adapter.js";
 import type { Collection, Database, OpenOptions } from "../../src/api/types.js";
 
+/**
+ * Byte budget used when the adapter mode contains the `cache` token. Sized
+ * generously so the entire benchmark dataset (plus documents inserted during
+ * the run) stays resident, isolating the cost/benefit of the hot-document cache
+ * from eviction churn.
+ */
+const CACHE_BYTES = 64 * 1024 * 1024;
+
 export class PocketDbAdapter implements Adapter {
   readonly name // = "pocket-db";
 
   private tempDir = "";
   private db: Database | null = null;
   private col: Collection | null = null;
+  private readonly useCache: boolean;
 
   constructor (mode:string) {
     mode = mode || "relaxed"
     this.name = `pocket-db (${mode})`
+    this.useCache = mode.includes("cache")
   }
 
   setup(initialDocs: BenchDocument[]): string[] {
@@ -34,6 +44,10 @@ export class PocketDbAdapter implements Adapter {
     this.db = open(opts);
     this.col = this.db.collection("docs");
     this.col.createIndex("role", { type: "string" });
+
+    // Enable the hot-document cache before the initial load so inserts prime it.
+    if (this.useCache)
+      this.col.enableCache(CACHE_BYTES);
 
     const { insertedIds } = this.col.insertMany(initialDocs as unknown as Record<string, unknown>[]);
     return insertedIds;

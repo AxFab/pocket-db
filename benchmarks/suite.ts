@@ -70,6 +70,19 @@ export const CASES: BenchCase[] = [
   },
 
   {
+    // Repeatedly reads a small working set of ids — the scenario the
+    // hot-document cache targets. Compare pocket-db (relaxed-json) against
+    // pocket-db (relaxed-json-cache) on this row to see the cache's effect.
+    name: "findByIdHot (16)",
+    warmup: 200,
+    iterations: 5_000,
+    run(adapter, iteration, context) {
+      const ids = context as string[];
+      adapter.findById(ids[iteration % Math.min(16, ids.length)]);
+    }
+  },
+
+  {
     name: "findAll",
     warmup: 10,
     iterations: 50,

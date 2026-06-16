@@ -5,6 +5,7 @@ import { decodePutDocumentPayload } from "../storage/document-operation.js";
 import type { DocumentEncoder } from "../storage/encoding/document-encoder.js";
 import type { FileStorage } from "../storage/file-storage.js";
 import { readOperationFromBuffer } from "../storage/operation-record.js";
+import type { DocumentCache } from "./document-cache.js";
 import type { Cursor } from "./types.js";
 
 export interface QueryCandidate {
@@ -32,13 +33,17 @@ export class PocketCursor implements Cursor {
    *                    When provided, all document reads are served from this buffer
    *                    with zero additional syscalls.
    * @param encoder     Document encoder used to deserialize payload bytes.
+   * @param cache       Optional hot-document cache. When `null` (the default,
+   *                    i.e. caching disabled on the collection) the read path is
+   *                    byte-for-byte the original behaviour with no overhead.
    */
   constructor(
     private readonly storage: FileStorage,
     private readonly query: CompiledQuery,
     private readonly candidates: QueryCandidate[],
     private readonly bulkBuffer: Buffer | null = null,
-    private readonly encoder: DocumentEncoder
+    private readonly encoder: DocumentEncoder,
+    private readonly cache: DocumentCache | null = null
   ) {}
 
   next(): Record<string, unknown> | null {
@@ -54,7 +59,7 @@ export class PocketCursor implements Cursor {
       const candidate = this.candidates[this.currentIndex];
       this.currentIndex += 1;
 
-      const document = this.readCandidateDocument(candidate.offset);
+      const document = this.readCandidateDocument(candidate);
 
       if (!evaluateCompiledQuery(this.query, document as DocumentRecord)) {
         continue;
@@ -97,7 +102,7 @@ export class PocketCursor implements Cursor {
     let total = 0;
 
     for (const candidate of this.candidates) {
-      const document = this.readCandidateDocument(candidate.offset);
+      const document = this.readCandidateDocument(candidate);
 
       if (evaluateCompiledQuery(this.query, document as DocumentRecord)) {
         total += 1;
@@ -166,7 +171,7 @@ export class PocketCursor implements Cursor {
     const results: Record<string, unknown>[] = [];
 
     for (const candidate of this.candidates) {
-      const document = this.readCandidateDocument(candidate.offset);
+      const document = this.readCandidateDocument(candidate);
 
       if (evaluateCompiledQuery(this.query, document as DocumentRecord)) {
         results.push(document);
@@ -176,16 +181,47 @@ export class PocketCursor implements Cursor {
     return results;
   }
 
-  private readCandidateDocument(offset: number): Record<string, unknown> {
+  /**
+   * Resolves a candidate to its document, honouring the cursor's offset
+   * snapshot.
+   *
+   * When a cache is present, it is consulted first: a hit returns a clone of the
+   * cached version *only if the cached offset matches this candidate's snapshot
+   * offset* (otherwise the cache holds a newer version and we must read our own).
+   * On a miss the record is read (from the bulk buffer or a single record read),
+   * decoded, and handed to the cache by reference. The cache then owns that
+   * object, so the caller receives a clone instead — preserving the contract
+   * that query results are independent, caller-owned objects.
+   *
+   * When no cache is present this is the original read-and-decode path with zero
+   * added overhead.
+   */
+  private readCandidateDocument(candidate: QueryCandidate): Record<string, unknown> {
+    if (this.cache !== null) {
+      const cached = this.cache.get(candidate.id, candidate.offset);
+
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const operation = this.bulkBuffer !== null
-      ? readOperationFromBuffer(this.bulkBuffer, offset - FILE_HEADER_BYTES)
-      : this.storage.readOperationAtOffset(offset);
+      ? readOperationFromBuffer(this.bulkBuffer, candidate.offset - FILE_HEADER_BYTES)
+      : this.storage.readOperationAtOffset(candidate.offset);
 
     if (!operation.identifier.equals(PUT_DOCUMENT_OPERATION)) {
       throw new Error("Invalid cursor candidate: expected a put document operation.");
     }
 
-    return decodePutDocumentPayload(operation.payload, this.encoder).document;
+    const document = decodePutDocumentPayload(operation.payload, this.encoder).document;
+
+    if (this.cache !== null) {
+      // The cache takes ownership of the decoded object; the caller gets a clone.
+      this.cache.set(candidate.id, candidate.offset, document);
+      return structuredClone(document);
+    }
+
+    return document;
   }
 }
 

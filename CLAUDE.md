@@ -34,7 +34,7 @@ There is no linter configured yet.
 ### Layer Diagram
 
 ```
-src/api/          ← public surface: open(), Database, Collection, Cursor
+src/api/          ← public surface: open(), Database, Collection, Cursor, DocumentCache
 src/search/       ← query compilation, evaluation, sort, document update operators
 src/indexes/      ← primary index, secondary indexes (string/number), IndexManager
 src/storage/      ← file format, binary encoding, CRC32 validation, file lock
@@ -123,6 +123,8 @@ Batch methods (`insertMany`, `updateMany`, `deleteMany`) wrap their individual r
 
 **`sort(spec)`**: stores the sort spec (up to 4 fields, direction `1` or `-1`). On the first `next()` call after `sort()` is set, `nextSorted()` reads all matching documents eagerly into a buffer, sorts them, then yields with skip/limit applied. Sort is always eager — there is no sorted index.
 
+**Cache consultation:** `readCandidateDocument(candidate)` takes the full `{ id, offset }` candidate. When the cursor was given a `DocumentCache` (i.e. the collection has caching enabled), it calls `cache.get(id, offset)` first; a hit returns the cached clone with no read or decode. On a miss it reads (bulk buffer or single record), decodes, hands the decoded object to `cache.set(id, offset, doc)` by reference, and returns a clone. When the cache is `null` (default) this is the original read-and-decode path with only a single `null` check of overhead.
+
 ### Sort (`src/search/sort.ts`)
 
 - `parseSortSpec(spec)`: validates max 4 fields, direction must be `1` or `-1`.
@@ -182,6 +184,22 @@ Index definitions are persisted in the log (`idx1`). Index contents are rebuilt 
 
 **`InMemoryPrimaryIndex`**: handles `_id` equality and `$in` lookups. `snapshot()` returns all `{ id, offset }` pairs for full-collection scans.
 
+### Document Cache (`src/api/document-cache.ts`)
+
+`DocumentCache` is an optional, per-collection, byte-bounded LRU of parsed "hot" documents. It is **disabled by default**: `PocketCollection` holds `cache: DocumentCache | null = null` and only instantiates the object on `enableCache(maxBytes)`, so a collection that never opts in pays only a single `null` check on the read/write paths (this is a hard requirement — caching must have no impact when off).
+
+Entries are keyed by `_id` hex and stored as `{ document, offset, bytes }`:
+- **Keyed by id** so a document stays cached across updates (the offset moves) and across compaction (ids/contents don't change). The cost is explicit invalidation on the write path.
+- **Versioned by offset.** `get(id, offset)` returns a hit only when the stored offset matches the caller's expected offset. This preserves the cursor-snapshot invariant: a cursor reading from an older snapshot offset *misses* a newer cached entry and reads its own version from disk. After a write, the entry is refreshed with the new offset so steady-state reads hit again.
+- **Ownership/cloning.** `set` takes ownership by reference (callers must not mutate afterwards — the write path builds fresh docs, the read path decodes fresh docs). `get` returns a `structuredClone`, preserving the contract that query results are independent, caller-owned objects. The clone-on-read is the cache's main cost and is outweighed by skipping the read + decode (see benchmarks).
+- **Eviction.** LRU via `Map` insertion order; `get`/`set` re-insert to mark most-recently-used; the first key is least-recently-used. A document larger than the whole budget is not cached. Byte size is estimated by `estimateDocumentBytes` (`JSON.stringify(doc).length * 2`), overridable via `sizeOf`.
+
+The cache is purely in-memory and never persisted — empty on every open, like secondary indexes.
+
+**Integration in `PocketCollection`** (single chokepoints): `find()` passes the cache to the cursor; `applyPutDocument` (insert/replace/update) calls `cache.set(id, offset, doc)` to prime/refresh for free; `deletePrimaryIndexEntry` calls `cache.invalidate(id)`; `dropFromReplay` calls `cache.clear()`; `compact()` needs no cache action (ids/contents unchanged). Public methods: `enableCache(maxBytes)`, `disableCache()`, `cacheStats(): DocumentCacheStats | null`.
+
+**Known limitations (deliberate, V1):** the bulk-read path still reads the full candidate range contiguously even when some candidates are cached (a future change can restrict the read to the *missing* range); large scans populate the cache and can cause LRU scan pollution if the budget is smaller than the scan footprint; the cache is lazy only (no eager fully-resident mode — a budget larger than the collection does not pre-load at open).
+
 ### Compaction (`src/api/database.ts` — `compact`)
 
 `compact()` rewrites the database file in a single forward pass:
@@ -212,6 +230,7 @@ export type {
   IndexInfo, InsertManyResult, InsertOneResult, OpenOptions, ReplaceOneResult, UpdateResult
 } from "./api/types.js";
 export type { SortDirection } from "./search/sort.js";
+export type { DocumentCacheStats } from "./api/document-cache.js";
 ```
 
 `pocketDb` is a convenience alias for `open()`. When its first argument is a `string` it is treated as `options.path`; the optional second argument accepts the same `OpenOptions` minus `path`. Both call sites are equivalent:
@@ -225,6 +244,8 @@ pocketDb("./data.pdb")
 `Database` exposes `getCollections(): string[]` and `existsCollection(name): boolean` for introspection without side-effects (unlike `collection()` which creates on first access).
 
 `Collection` exposes `getIndexes(): IndexInfo[]` (where `IndexInfo = { name: string; type: string }`) and `existsIndex(name): boolean` for index introspection.
+
+`Collection` exposes the hot-document cache controls `enableCache(maxBytes: number): void`, `disableCache(): void`, and `cacheStats(): DocumentCacheStats | null` (`null` when disabled). The cache is off by default; see the Document Cache section above. `DocumentCacheStats` is exported from the package root.
 
 `Database.stats(): DatabaseStats` and `Collection.stats(): CollectionStats` report usage. The cheap fields — `sizeOnDisk` (from `FileStorage.size`, the in-memory `currentOffset`), `collectionCount`, `documentCount` (primary index `size`), `indexCount` — come straight from memory. The history fields — `operationCount`, `tombstoneCount`, `liveBytes`, `deadBytes` — require one forward scan of the log (`computeStorageStats` in `database.ts`), which reuses `shouldKeepOperation` for liveness so `deadBytes` is exactly what `compact()` would reclaim. Records of dropped collections count toward the global totals but are not attributed to any collection. Per-collection stats are produced by the same scan and injected into `PocketCollection` as a `storageStats` callback (no back-reference to the database). The invariant `sizeOnDisk === FILE_HEADER_BYTES + liveBytes + deadBytes` always holds.
 
@@ -246,6 +267,7 @@ pocketDb("./data.pdb")
 - **Single process only.** A `.lock` file prevents concurrent opens from different processes. Multiple writers on the same file are not supported and will corrupt the database.
 - **Sort is always eager.** `sort()` reads all matching candidates before returning the first result. Narrow the candidate set with an indexed query before sorting.
 - **Missing values sort at minimum.** `null`, `undefined`, and `NaN` rank below all typed values. With direction applied: first in ascending, last in descending.
+- **The document cache is off by default and free when off.** No `DocumentCache` is instantiated until `enableCache()`; the read/write paths only pay a `null` check. It is keyed by id and versioned by offset, so it never violates cursor-snapshot semantics, and it stays correct across updates/deletes/compaction.
 
 ## Current Development Status
 
@@ -265,8 +287,9 @@ pocketDb("./data.pdb")
 - `Database.getCollections()` / `Database.existsCollection(name)`
 - `Collection.getIndexes()` / `Collection.existsIndex(name)`
 - `Database.stats()` / `Collection.stats()` (size on disk, document/operation/tombstone counts, reclaimable bytes)
+- Optional hot-document cache: `Collection.enableCache()` / `disableCache()` / `cacheStats()` (off by default, id-keyed + offset-versioned LRU)
 - Clean public API surface and TypeScript exports
-- Benchmarks vs. SQLite (in-memory and file-backed) and JSON file
+- Benchmarks vs. SQLite (in-memory and file-backed), JSON file, lowdb, and LokiJS, plus a cache vs. no-cache `pocket-db` comparison
 
 **V2 planned:** unique indexes, persisted index snapshots, automatic compaction, read snapshots, `durability: "strict" | "relaxed"` with fsync, streaming scan, improved query planner, `$or`/`$nor` index support.
 
@@ -279,3 +302,5 @@ All tests create a fresh temporary directory per test (using `mkdtempSync`) and 
 When testing storage-layer behavior (e.g. crash recovery, transaction replay), tests manipulate `FileStorage` directly and re-open the database to verify replay semantics. These tests cast `(collection as any).id` to access the internal collection Buffer id needed to construct raw payloads.
 
 `existsId()` was removed from the public `Collection` interface. Tests that previously used it now use `findOne({ _id }) !== null` (with the assertion made before `db.close()` since `findOne` reads from disk).
+
+The hot-document cache is covered by `tests/document-cache.test.ts`: unit tests construct `DocumentCache` directly (imported from `src/api/document-cache.js`) to exercise offset versioning, LRU eviction, oversized-doc rejection, shrink-to-fit, and stats; integration tests go through `Collection.enableCache()` and assert priming on insert, hotness across updates, invalidation on delete, the cursor-snapshot invariant *with the cache enabled* (replace mid-cursor, still read the old version), and that mutating a returned document does not corrupt the cache. The benchmark adds a `pocket-db (relaxed-json-cache)` adapter (cache enabled via a `cache` token in the adapter mode) and a `findByIdHot (16)` case to compare against the non-cached adapter.

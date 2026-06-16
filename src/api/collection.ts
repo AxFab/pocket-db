@@ -21,6 +21,7 @@ import type { FileStorage } from "../storage/file-storage.js";
 import { encodeCreateIndexPayload, encodeDropIndexPayload } from "../storage/index-operation.js";
 import { encodeDropCollectionPayload } from "../storage/collection-operation.js";
 import { PocketCursor } from "./cursor.js";
+import { DocumentCache, type DocumentCacheStats } from "./document-cache.js";
 import type {
   Collection,
   Cursor,
@@ -51,6 +52,13 @@ export class PocketCollection implements Collection {
   private readonly primaryIndex = new InMemoryPrimaryIndex();
   private readonly indexManager = new IndexManager();
   private dropped = false;
+
+  /**
+   * Hot-document cache. `null` (the default) means caching is disabled: the
+   * cache object is never even instantiated, so write/read paths only pay a
+   * single `null` check. Activated lazily by {@link enableCache}.
+   */
+  private cache: DocumentCache | null = null;
 
   constructor(
     readonly id: Buffer,
@@ -99,6 +107,45 @@ export class PocketCollection implements Collection {
       liveBytes: core.liveBytes,
       deadBytes: core.deadBytes
     };
+  }
+
+  /**
+   * Enables the hot-document cache, or resizes it if already enabled.
+   *
+   * Caching is **off by default**; this is the only way to turn it on. It trades
+   * memory for read latency: repeatedly read documents are served from memory,
+   * skipping the file read and payload decode. The cache is purely in-memory and
+   * is not persisted — it starts empty on every `open()` and warms with traffic.
+   *
+   * @param maxBytes Approximate byte budget for resident documents (positive
+   *                 integer). Least-recently-used documents are evicted once the
+   *                 budget is exceeded.
+   */
+  enableCache(maxBytes: number): void {
+    this.assertNotDropped();
+
+    if (this.cache === null) {
+      this.cache = new DocumentCache({ maxBytes });
+      return;
+    }
+
+    this.cache.setMaxBytes(maxBytes);
+  }
+
+  /**
+   * Disables the hot-document cache and frees all cached entries, returning the
+   * collection to the zero-overhead default.
+   */
+  disableCache(): void {
+    this.cache = null;
+  }
+
+  /**
+   * Returns cache statistics (hit/miss/eviction counts, byte usage), or `null`
+   * when caching is disabled.
+   */
+  cacheStats(): DocumentCacheStats | null {
+    return this.cache?.stats() ?? null;
   }
 
   insertOne(document: Record<string, unknown>): InsertOneResult {
@@ -296,7 +343,8 @@ export class PocketCollection implements Collection {
       plan.residualQuery,
       plan.candidates,
       bulkBuffer,
-      this.encoder
+      this.encoder,
+      this.cache
     );
   }
 
@@ -433,6 +481,7 @@ export class PocketCollection implements Collection {
   deletePrimaryIndexEntry(id: string): void {
     this.primaryIndex.remove(id);
     this.indexManager.removeDocument(id);
+    this.cache?.invalidate(id);
   }
 
   createIndexFromReplay(field: string, type: SecondaryIndexType): void {
@@ -442,6 +491,7 @@ export class PocketCollection implements Collection {
   dropFromReplay(): void {
     this.primaryIndex.clear();
     this.indexManager.clear();
+    this.cache?.clear();
     this.dropped = true;
     this.onDrop();
   }
@@ -581,6 +631,10 @@ export class PocketCollection implements Collection {
   private applyPutDocument(id: string, offset: number, document: Record<string, unknown>): void {
     this.primaryIndex.set(id, offset);
     this.indexManager.updateDocument(document as DocumentRecord, { id, offset });
+    // Refresh the cached version with the new offset so the document stays hot
+    // across updates. The document is freshly built and never mutated after this
+    // call, so the cache can safely take ownership by reference.
+    this.cache?.set(id, offset, document);
   }
 
   private createIndexInMemory(field: string, type: SecondaryIndexType): SecondaryIndexDefinition {

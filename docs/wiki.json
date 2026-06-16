@@ -56,6 +56,15 @@
       "description": "How Pocket DB builds and uses secondary indexes for fast field lookups and sorted queries."
     },
     {
+      "id": "cache.html",
+      "label": "Hot-Document Cache",
+      "src": "docs/cache.md",
+      "icon": "<path d=\"M8 1C4.5 1 2 2.1 2 3.5v9C2 13.9 4.5 15 8 15s6-1.1 6-2.5v-9C14 2.1 11.5 1 8 1zm0 1.5c2.8 0 4.5.8 4.5 1s-1.7 1-4.5 1-4.5-.8-4.5-1 1.7-1 4.5-1z\"/>",
+      "type": "TechArticle",
+      "title": "Hot-Document Cache — Pocket DB",
+      "description": "How Pocket DB's optional in-memory LRU cache speeds up repeated reads: id keying, offset versioning, eviction, and benchmarks."
+    },
+    {
       "id": "compact.html",
       "label": "Compaction",
       "src": "docs/compact.md",

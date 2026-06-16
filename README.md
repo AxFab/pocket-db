@@ -180,6 +180,10 @@ collection.dropIndex(field): DropIndexResult
 collection.getIndexes(): { name: string; type: string }[]
 collection.existsIndex(name: string): boolean
 collection.drop(): DropResult
+
+collection.enableCache(maxBytes: number): void   // hot-document cache (off by default)
+collection.disableCache(): void
+collection.cacheStats(): DocumentCacheStats | null
 ```
 
 ### Cursor
@@ -289,6 +293,26 @@ users.dropIndex("role");
 
 ---
 
+## Hot-document cache
+
+By default every read decodes its document from the file. For workloads that read the same documents repeatedly, you can opt into an in-memory cache that keeps parsed *hot* documents around, so repeated reads skip both the file read and the decode.
+
+```ts
+users.enableCache(16 * 1024 * 1024); // 16 MB budget; least-recently-used docs are evicted
+users.cacheStats();                  // { hits, misses, evictions, bytes, documentCount, ... }
+users.disableCache();                // free everything, back to zero overhead
+```
+
+The cache is **off by default** — when disabled it costs nothing (no object is even allocated). It is keyed by `_id` and versioned by file offset, so it stays correct across updates, deletes, compaction, and open cursors (snapshot reads are preserved).
+
+**The gain:** on a 2,000-document JSON dataset, single-document reads get ~**2.9×** faster and even full scans ~**1.8×** faster, because skipping the read + JSON parse outweighs the cost of cloning the cached object.
+
+**The drawbacks:** it trades memory for speed, so size the budget for your hot working set. It is rebuilt empty on every `open()` (in-memory only, never persisted). And large scans populate the cache as they read — if the budget is smaller than a scan's footprint, a one-off scan can evict genuinely hot documents.
+
+See [docs/cache.md](docs/cache.md) for the full design, internals, and benchmark methodology.
+
+---
+
 ## Sorting and pagination
 
 ```ts
@@ -342,7 +366,8 @@ import type {
   UpdateResult, ReplaceOneResult,
   DeleteOneResult, DeleteManyResult,
   CreateIndexResult, DropIndexResult, DropResult,
-  IndexInfo, OpenOptions, SortDirection
+  IndexInfo, OpenOptions, SortDirection,
+  DocumentCacheStats
 } from "pocket-db";
 ```
 
@@ -356,6 +381,7 @@ The `docs/` folder contains in-depth documentation available as a wiki:
 - [Storage semantics](docs/storage.md) — replay rules, write path, crash recovery
 - [Query & update model](docs/query.md) — operators, compilation, cursor semantics
 - [Indexes](docs/indexes.md) — primary index, StringIndex, NumberIndex, query planner
+- [Hot-document cache](docs/cache.md) — LRU cache internals, offset versioning, eviction, benchmarks
 - [Compaction](docs/compact.md) — algorithm, invariants, secondary index refresh
 
 ---
@@ -407,9 +433,11 @@ larger than available RAM. Pocket DB keeps only its indexes in memory and reads 
 document from its file offset on demand — so it can back a database **far larger than
 RAM would ever allow**. The price today is slower full scans.
 
-A **document cache** is landing in the next release: hot documents stay in memory, which
-closes most of the read gap without touching the append-only write model. Not elegant,
-but simple and radical.
+A **hot-document cache** now closes most of that read gap without touching the append-only
+write model. Opt in with `collection.enableCache(maxBytes)` and hot documents stay parsed
+in memory: single-document reads get ~2.9× faster and full scans ~1.8× faster on the
+2,000-document JSON benchmark. It is off by default and trades memory for speed — see
+[docs/cache.md](docs/cache.md).
 
 **In short:** if your workload is write-heavy, needs durability, or outgrows memory,
 pocket-db is the right tool. If you need pure in-memory read throughput on a dataset that

@@ -20,3 +20,4 @@ export type {
   UpdateResult
 } from "./api/types.js";
 export type { SortDirection } from "./search/sort.js";
+export type { DocumentCacheStats } from "./api/document-cache.js";

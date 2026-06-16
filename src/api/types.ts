@@ -1,5 +1,6 @@
 import type { UpdateExpression } from "../search/index.js";
 import type { SecondaryIndexDefinition, SecondaryIndexType } from "../indexes/index.js";
+import type { DocumentCacheStats } from "./document-cache.js";
 import { DurabilityMode } from "../types.js";
 
 /** Serialization format used for document payloads in the storage file. */
@@ -151,6 +152,29 @@ export interface Collection {
    * forward scan of the log.
    */
   stats(): CollectionStats;
+
+  /**
+   * Enables the hot-document cache (off by default), or resizes an already
+   * enabled cache. Trades memory for read latency: repeatedly read documents are
+   * served from memory, skipping the file read and payload decode.
+   *
+   * @param maxBytes Approximate byte budget for resident documents (positive
+   *                 integer). Least-recently-used documents are evicted when the
+   *                 budget is exceeded.
+   */
+  enableCache(maxBytes: number): void;
+
+  /**
+   * Disables the hot-document cache and frees all cached entries, returning the
+   * collection to its zero-overhead default.
+   */
+  disableCache(): void;
+
+  /**
+   * Returns hot-document cache statistics (hits, misses, evictions, byte usage),
+   * or `null` when caching is disabled.
+   */
+  cacheStats(): DocumentCacheStats | null;
 
   insertOne(document: Record<string, unknown>): InsertOneResult;
 

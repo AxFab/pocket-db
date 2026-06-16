@@ -21,6 +21,7 @@ import { runBenchmarks, printTable } from "./runner.js";
 const adapters = [
   new PocketDbAdapter('strict-json'),
   new PocketDbAdapter('relaxed-json'),
+  new PocketDbAdapter('relaxed-json-cache'),
   new PocketDbAdapter('relaxed-bson'),
   new PocketDbAdapter('relaxed-amf3'),
   new SqliteAdapter('memory'),
