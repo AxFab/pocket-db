@@ -1,11 +1,10 @@
 
 <p align="center">
-  <img src="docs/pocket-db.png" alt="pocket-db" width="260" />
+  <img src="docs/pocket-db.svg" alt="pocket-db" width="300" />
 </p>
 
-<p align="center">
-  An embedded, single-file NoSQL database for Node.js — simple to set up, zero production dependencies.
-</p>
+**Pocket DB** — the local database for Electron, desktop and CLI apps.
+One file, **zero native dependencies**, a familiar MongoDB-style API.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@axfab/pocket-db"><img src="https://img.shields.io/npm/v/@axfab/pocket-db.svg" alt="npm version" /></a>
@@ -16,18 +15,40 @@
 
 ---
 
-Pocket DB stores everything in a **single append-only file** — no server, no daemon, no setup. You open a file, work with collections of JSON documents, and close. That is the whole model.
+Add persistent local storage to a Node.js or Electron app — no server, no daemon,
+and **no native bindings**. No `node-gyp`, no rebuilding against every Electron
+version, none of the `better-sqlite3` recompile dance. Run `npm install` and you
+have a working document store backed by a single file.
 
-- ✓ Single file
-- ✓ Mongo-like API
-- ✓ Zero runtime dependencies
-- ✓ Fast append-only writes
+```ts
+import { pocketDb } from "@axfab/pocket-db";
 
-It is inspired by SQLite (one file, embedded) and MongoDB (document model, familiar API), but intentionally small. The core constraint — *never reserialise the entire database on a write* — means every insert, update and delete is a fast append. Reading a document means seeking to its offset and reading only those bytes.
+const db = pocketDb("./data.pdb");
+const users = db.collection("users");
 
-Good fit for: desktop apps, CLI tools, Electron apps, local servers, plugins, structured caches, offline-first prototypes.
+users.insertOne({ name: "Ada", role: "admin" });
+const admins = users.find({ role: "admin" }).toArray();
 
-Not a fit for: multi-process concurrent writers, datasets requiring complex aggregation pipelines, or anything that would normally call for a full server database.
+db.close();
+```
+
+That's the whole setup — open a file, work with collections of JSON documents, close.
+
+## Why pocket-db
+
+- 🪶 **Zero native dependencies** — pure TypeScript, no `node-gyp`, no per-Electron rebuilds
+- 📄 **Single file** — back up your whole database by copying one `.pdb` file
+- 🍃 **MongoDB-style API** — `find` / `insert` / `update` with the operators you already know
+- ⚡ **Append-only writes** — every mutation is a fast sequential append, with crash-safe batches
+
+Inspired by SQLite (one embedded file) and MongoDB (document model), but intentionally
+small. The core rule — *never reserialise the whole database on a write* — makes every
+insert, update and delete a fast append, and reads seek straight to a document's offset.
+
+**Good fit:** Electron & desktop apps, CLI tools, local servers, plugins, structured
+caches, offline-first prototypes.
+**Not a fit:** multiple processes writing the same file at once, complex aggregation
+pipelines, or anything that really wants a server database.
 
 ---
 
@@ -341,7 +362,13 @@ The `docs/` folder contains in-depth documentation available as a wiki:
 
 ## Performance
 
-Pocket DB is benchmarked against several alternative embedded stores on a collection of 1,000 documents across ten common operations. The numbers below are ops/sec on an Apple M-series machine — higher is better. An asterisk marks the fastest adapter for each operation.
+Pocket DB is built for fast, durable writes. Benchmarked against other embedded
+stores on 1,000 documents across ten common operations — ops/sec, higher is better,
+`*` marks the fastest adapter per operation.
+
+**The headline:** for durable writes, pocket-db is **40–700× faster** than every other
+file-backed store here, and lands within ~12% of in-memory SQLite — which isn't even
+durable.
 
 ```
 Benchmark results — 1,000 documents
@@ -362,16 +389,33 @@ sortByScore (desc)                    91               293               293    
 All values in ops/sec.  * = fastest for this operation.
 ```
 
-**What these numbers reveal:**
+### Reading the results
 
-The append-only log design is the reason pocket-db's write throughput is competitive with SQLite in-memory for inserts and faster than everything else for deletes and single-document updates. Every mutation is a single sequential write — there is no B-tree rebalancing, no page allocation, and no full-file reserialisation. `deleteOne` and `updateOne` are particularly cheap because they only append a tombstone or a replacement record and update the in-memory index pointer.
+**Writes — where pocket-db shines.** Every mutation is a single sequential append:
+no B-tree rebalancing, no page allocation, no full-file reserialisation. That's why
+`insertOne`, `updateOne` and `deleteOne` leave every other persistent store far behind
+and sit right next to in-memory SQLite. For a desktop or Electron app writing to disk
+on every user action, this is exactly the path that matters — and it stays durable.
 
-Reads are a different story. Unlike json-file, lowdb, or LokiJS — which serve reads entirely from in-memory structures — pocket-db currently has no document cache. Every `findOne` and every cursor step seeks to the document's file offset and reads from disk. This explains why in-memory adapters show several orders of magnitude higher read throughput. A read cache is planned for V2 and will reach to close this gap for hot-document workloads without changing the write model.
+**Single-document reads are fast too.** `findById` runs at ~140k ops/sec — more than
+enough for typical app workloads, even though it reads from disk rather than RAM.
 
-In short: if your workload is write-heavy or you need durability on every write, pocket-db competes well. If you need high-throughput in-memory reads and can afford to lose data on crash, a pure in-memory store will outperform it today.
+**Full scans and sorts — the current tradeoff, by design.** json-file, lowdb and LokiJS
+win on `findAll` and `sortByScore` because they hold the *entire dataset in memory* and
+serve reads from there. That speed has a hard ceiling: your database can never grow
+larger than available RAM. Pocket DB keeps only its indexes in memory and reads each
+document from its file offset on demand — so it can back a database **far larger than
+RAM would ever allow**. The price today is slower full scans.
+
+A **document cache** is landing in the next release: hot documents stay in memory, which
+closes most of the read gap without touching the append-only write model. Not elegant,
+but simple and radical.
+
+**In short:** if your workload is write-heavy, needs durability, or outgrows memory,
+pocket-db is the right tool. If you need pure in-memory read throughput on a dataset that
+comfortably fits in RAM, an in-memory store still wins today.
 
 Run the benchmarks yourself:
-
 ```bash
 npm install
 npm run bench

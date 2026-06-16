@@ -33,9 +33,32 @@ export type FieldOperatorMap = {
   $regex?: string | RegExp;
   /** Flags for `$regex` when the pattern is given as a string. */
   $options?: string;
+  /**
+   * Matches field values by their JSON type. Accepts a single type name or an
+   * array of type names (matches if the value is any of them). A missing field
+   * never matches. See {@link DocumentTypeName} for the accepted names.
+   */
+  $type?: DocumentTypeName | DocumentTypeName[];
   /** Negates the combined result of the enclosed operator expression. */
   $not?: Omit<FieldOperatorMap, "$not">;
 };
+
+/**
+ * JSON type names accepted by the `$type` query operator. `"bool"` is an alias
+ * for `"boolean"`. `null` is its own type; `"array"` is reported for arrays and
+ * `"object"` only for plain objects (never arrays).
+ */
+export type DocumentTypeName =
+  | "null"
+  | "boolean"
+  | "bool"
+  | "number"
+  | "string"
+  | "array"
+  | "object";
+
+/** Canonical type names after `"bool"` has been normalized to `"boolean"`. */
+export type CanonicalTypeName = Exclude<DocumentTypeName, "bool">;
 
 /** A bare `RegExp` condition is shorthand for `{ $regex: <regexp> }`. */
 export type FieldQuery = QueryValue | RegExp | FieldOperatorMap;
@@ -82,6 +105,7 @@ export type FieldOperator =
   | { type: "nin";    values: QueryValue[] }
   | { type: "exists"; value: boolean }
   | { type: "regex";  regex: RegExp }
+  | { type: "type";   types: CanonicalTypeName[] }
   | { type: "not";    operators: FieldOperator[] };
 
 /**

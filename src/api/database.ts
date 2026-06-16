@@ -24,7 +24,7 @@ import { decodeCreateIndexPayload, decodeDropIndexPayload } from "../storage/ind
 import { decodeDropCollectionPayload } from "../storage/collection-operation.js";
 import type { OperationRecord } from "../storage/operation-record.js";
 import { PocketCollection } from "./collection.js";
-import type { Collection, Database } from "./types.js";
+import type { Collection, Database, DatabaseStats, StorageStatsCore } from "./types.js";
 
 export class PocketDatabase implements Database {
   private readonly collectionsByName = new Map<string, PocketCollection>();
@@ -49,6 +49,26 @@ export class PocketDatabase implements Database {
 
   existsCollection(name: string): boolean {
     return this.collectionsByName.has(name);
+  }
+
+  stats(): DatabaseStats {
+    const { global } = this.computeStorageStats();
+
+    let documentCount = 0;
+    for (const collection of this.collectionsById.values()) {
+      documentCount += collection.documentCount;
+    }
+
+    return {
+      path: this.storage.path,
+      sizeOnDisk: this.storage.size,
+      collectionCount: this.collectionsByName.size,
+      documentCount,
+      operationCount: global.operationCount,
+      tombstoneCount: global.tombstoneCount,
+      liveBytes: global.liveBytes,
+      deadBytes: global.deadBytes
+    };
   }
 
   collection(name: string): Collection {
@@ -148,6 +168,76 @@ export class PocketDatabase implements Database {
     return true;
   }
 
+  /**
+   * Single forward scan of the operation log that tallies record counts and
+   * byte usage, both globally and per live collection.
+   *
+   * Liveness reuses {@link shouldKeepOperation} — exactly the predicate that
+   * drives {@link compact} — so `deadBytes` is precisely the space a compaction
+   * would reclaim. Records belonging to dropped collections still count toward
+   * the global totals but are not attributed to any (now-absent) collection.
+   */
+  private computeStorageStats(): { global: StorageStatsCore; byCollection: Map<string, StorageStatsCore> } {
+    const global = createEmptyStatsCore();
+    const byCollection = new Map<string, StorageStatsCore>();
+
+    for (const operation of this.storage.readOperations()) {
+      const byteLength = operation.byteLength ?? 0;
+      const live = this.shouldKeepOperation(operation);
+
+      accumulate(global, live, byteLength);
+
+      const collectionIdHex = this.operationCollectionIdHex(operation);
+      if (collectionIdHex !== null && this.collectionsById.has(collectionIdHex)) {
+        let core = byCollection.get(collectionIdHex);
+        if (!core) {
+          core = createEmptyStatsCore();
+          byCollection.set(collectionIdHex, core);
+        }
+        accumulate(core, live, byteLength);
+      }
+    }
+
+    return { global, byCollection };
+  }
+
+  private collectionStorageStats(collectionIdHex: string): StorageStatsCore {
+    return this.computeStorageStats().byCollection.get(collectionIdHex) ?? createEmptyStatsCore();
+  }
+
+  /**
+   * Extracts the owning collection id (hex) of an operation, or `null` for
+   * database-level records (transaction boundaries, holes, unknown ids).
+   *
+   * For `put1`/`del1` the collection id is the first 4 payload bytes, so this
+   * avoids decoding the document body.
+   */
+  private operationCollectionIdHex(operation: OperationRecord): string | null {
+    const id = operation.identifier;
+
+    if (id.equals(PUT_DOCUMENT_OPERATION) || id.equals(DELETE_DOCUMENT_OPERATION)) {
+      return operation.payload.subarray(0, 4).toString("hex");
+    }
+
+    if (id.equals(NEW_COLLECTION_OPERATION)) {
+      return decodeNewCollectionPayload(operation.payload).id.toString("hex");
+    }
+
+    if (id.equals(DROP_COLLECTION_OPERATION)) {
+      return decodeDropCollectionPayload(operation.payload).toString("hex");
+    }
+
+    if (id.equals(CREATE_INDEX_OPERATION)) {
+      return decodeCreateIndexPayload(operation.payload).collectionId.toString("hex");
+    }
+
+    if (id.equals(DROP_INDEX_OPERATION)) {
+      return decodeDropIndexPayload(operation.payload).collectionId.toString("hex");
+    }
+
+    return null;
+  }
+
   private loadCollections(): void {
     let transactionOperations: OperationRecord[] | null = null;
 
@@ -184,6 +274,7 @@ export class PocketDatabase implements Database {
   }
 
   private applyOperation(operation: OperationRecord): void {
+
     if (operation.identifier.equals(NEW_COLLECTION_OPERATION)) {
       this.registerCollection(decodeNewCollectionPayload(operation.payload));
       return;
@@ -265,7 +356,14 @@ export class PocketDatabase implements Database {
       this.collectionIds.delete(idHex);
     };
 
-    const collection = new PocketCollection(definition.id, definition.name, this.storage, onDrop, this.encoder);
+    const collection = new PocketCollection(
+      definition.id,
+      definition.name,
+      this.storage,
+      onDrop,
+      this.encoder,
+      () => this.collectionStorageStats(idHex)
+    );
 
     this.collectionsByName.set(collection.name, collection);
     this.collectionsById.set(idHex, collection);
@@ -282,5 +380,21 @@ export class PocketDatabase implements Database {
     }
 
     return id;
+  }
+}
+
+function createEmptyStatsCore(): StorageStatsCore {
+  return { operationCount: 0, tombstoneCount: 0, liveBytes: 0, deadBytes: 0 };
+}
+
+/** Folds one record into a {@link StorageStatsCore} accumulator. */
+function accumulate(core: StorageStatsCore, live: boolean, byteLength: number): void {
+  core.operationCount += 1;
+
+  if (live) {
+    core.liveBytes += byteLength;
+  } else {
+    core.deadBytes += byteLength;
+    core.tombstoneCount += 1;
   }
 }

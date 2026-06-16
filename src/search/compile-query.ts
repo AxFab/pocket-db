@@ -1,5 +1,6 @@
 import type {
   AndPredicate,
+  CanonicalTypeName,
   CompiledQuery,
   FieldOperator,
   FieldOperatorMap,
@@ -16,7 +17,22 @@ const SUPPORTED_FIELD_OPERATORS = new Set([
   "$in", "$nin",
   "$exists",
   "$regex", "$options",
+  "$type",
   "$not"
+]);
+
+/**
+ * Accepted `$type` names mapped to their canonical form. `"bool"` is an alias
+ * for `"boolean"`; every other name maps to itself.
+ */
+const TYPE_ALIASES = new Map<string, CanonicalTypeName>([
+  ["null", "null"],
+  ["boolean", "boolean"],
+  ["bool", "boolean"],
+  ["number", "number"],
+  ["string", "string"],
+  ["array", "array"],
+  ["object", "object"]
 ]);
 
 /**
@@ -146,6 +162,10 @@ export function compileFieldOperators(condition: FieldQuery): FieldOperator[] {
         }
         break;
 
+      case "$type":
+        operators.push({ type: "type", types: compileTypeNames(value) });
+        break;
+
       case "$not": {
         if (!value || typeof value !== "object" || Array.isArray(value)) {
           throw new Error("$not requires an operator expression object.");
@@ -169,6 +189,41 @@ export function isOperatorObject(condition: FieldQuery): condition is FieldOpera
   }
 
   return Object.keys(condition).some((key) => key.startsWith("$"));
+}
+
+// ---------------------------------------------------------------------------
+// $type helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates and normalizes a `$type` operand into the canonical type names used
+ * at evaluation time.
+ *
+ * Accepts a single type name or a non-empty array of type names. Names are
+ * case-sensitive; `"bool"` is normalized to `"boolean"`. Unknown names, empty
+ * arrays, and non-string entries throw at compile time.
+ */
+function compileTypeNames(value: unknown): CanonicalTypeName[] {
+  const requested = Array.isArray(value) ? value : [value];
+
+  if (requested.length === 0) {
+    throw new Error("$type must specify at least one type.");
+  }
+
+  return requested.map((name) => {
+    if (typeof name !== "string") {
+      throw new Error("$type must be a type name string or an array of them.");
+    }
+
+    const canonical = TYPE_ALIASES.get(name);
+    if (canonical === undefined) {
+      throw new Error(
+        `Unsupported $type name "${name}". Allowed: null, boolean (bool), number, string, array, object.`
+      );
+    }
+
+    return canonical;
+  });
 }
 
 // ---------------------------------------------------------------------------

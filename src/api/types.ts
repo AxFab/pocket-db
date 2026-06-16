@@ -39,6 +39,45 @@ export interface OpenOptions {
   serialization?: SerializationFormat;
 }
 
+/**
+ * Byte and record counters shared by {@link DatabaseStats} and
+ * {@link CollectionStats}. Produced by a single forward scan of the operation
+ * log. `liveBytes + deadBytes` covers every record (the file header is not
+ * counted here).
+ */
+export interface StorageStatsCore {
+  /** Number of operation records in scope (live + dead). */
+  operationCount: number;
+  /** Number of dead records a `compact()` would discard. */
+  tombstoneCount: number;
+  /** Bytes occupied by records `compact()` would keep. */
+  liveBytes: number;
+  /** Bytes occupied by dead records — the space a `compact()` would reclaim. */
+  deadBytes: number;
+}
+
+/** Snapshot of database-wide usage returned by {@link Database.stats}. */
+export interface DatabaseStats extends StorageStatsCore {
+  /** Absolute path of the database file. */
+  path: string;
+  /** Total size of the file on disk in bytes (file header + every record). */
+  sizeOnDisk: number;
+  /** Number of live collections. */
+  collectionCount: number;
+  /** Total number of live documents across all collections. */
+  documentCount: number;
+}
+
+/** Snapshot of a single collection's usage returned by {@link Collection.stats}. */
+export interface CollectionStats extends StorageStatsCore {
+  /** Collection name. */
+  name: string;
+  /** Number of live documents. */
+  documentCount: number;
+  /** Number of secondary indexes defined on the collection. */
+  indexCount: number;
+}
+
 export interface Database {
   collection(name: string): Collection;
 
@@ -51,6 +90,18 @@ export interface Database {
    * Returns `true` if a collection with the given name exists.
    */
   existsCollection(name: string): boolean;
+
+  /**
+   * Returns database-wide usage statistics: file size, live document count,
+   * total/dead operation counts, and the number of bytes a {@link compact}
+   * would reclaim.
+   *
+   * The cheap fields (size on disk, document and collection counts) come from
+   * in-memory state; the operation/byte counters require a single forward scan
+   * of the log (one bulk read, comparable to opening the database). Intended as
+   * an occasional introspection call, not a hot path.
+   */
+  stats(): DatabaseStats;
 
   /**
    * Rewrites the database file in a single forward pass, discarding dead
@@ -90,6 +141,16 @@ export interface Collection {
    * Returns `true` if a secondary index on `name` exists.
    */
   existsIndex(name: string): boolean;
+
+  /**
+   * Returns usage statistics scoped to this collection: live document count,
+   * index count, and the number of (live and dead) operation records and bytes
+   * attributed to it.
+   *
+   * Like {@link Database.stats}, the byte/record counters require a single
+   * forward scan of the log.
+   */
+  stats(): CollectionStats;
 
   insertOne(document: Record<string, unknown>): InsertOneResult;
 

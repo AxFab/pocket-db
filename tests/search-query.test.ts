@@ -78,6 +78,74 @@ describe("search query evaluation", () => {
     assert.equal(matchesQuery({ email: { $exists: true } }, ada), false);
   });
 
+  // ── $type ─────────────────────────────────────────────────────────────────
+
+  const typed = {
+    str: "hello",
+    num: 42,
+    bool: true,
+    nul: null,
+    arr: [1, 2, 3],
+    obj: { nested: 1 }
+  };
+
+  it("matches each JSON type", () => {
+    assert.equal(matchesQuery({ str: { $type: "string" } }, typed), true);
+    assert.equal(matchesQuery({ num: { $type: "number" } }, typed), true);
+    assert.equal(matchesQuery({ bool: { $type: "boolean" } }, typed), true);
+    assert.equal(matchesQuery({ nul: { $type: "null" } }, typed), true);
+    assert.equal(matchesQuery({ arr: { $type: "array" } }, typed), true);
+    assert.equal(matchesQuery({ obj: { $type: "object" } }, typed), true);
+  });
+
+  it("distinguishes null, array, and object", () => {
+    assert.equal(matchesQuery({ nul: { $type: "object" } }, typed), false);
+    assert.equal(matchesQuery({ arr: { $type: "object" } }, typed), false);
+    assert.equal(matchesQuery({ obj: { $type: "array" } }, typed), false);
+  });
+
+  it("accepts the bool alias for boolean", () => {
+    assert.equal(matchesQuery({ bool: { $type: "bool" } }, typed), true);
+    assert.equal(matchesQuery({ num: { $type: "bool" } }, typed), false);
+  });
+
+  it("matches an array of types (any of)", () => {
+    assert.equal(matchesQuery({ num: { $type: ["string", "number"] } }, typed), true);
+    assert.equal(matchesQuery({ str: { $type: ["string", "number"] } }, typed), true);
+    assert.equal(matchesQuery({ bool: { $type: ["string", "number"] } }, typed), false);
+  });
+
+  it("$type on a missing field never matches", () => {
+    assert.equal(matchesQuery({ missing: { $type: "null" } }, typed), false);
+    assert.equal(matchesQuery({ missing: { $type: "string" } }, typed), false);
+  });
+
+  it("combines $type with $not", () => {
+    assert.equal(matchesQuery({ str: { $not: { $type: "number" } } }, typed), true);
+    assert.equal(matchesQuery({ num: { $not: { $type: "number" } } }, typed), false);
+  });
+
+  it("rejects an unknown $type name", () => {
+    assert.throws(
+      () => matchesQuery({ num: { $type: "double" } as never }, typed),
+      /Unsupported \$type name/
+    );
+  });
+
+  it("rejects an empty $type array", () => {
+    assert.throws(
+      () => matchesQuery({ num: { $type: [] } }, typed),
+      /\$type must specify at least one type/
+    );
+  });
+
+  it("rejects a non-string $type entry", () => {
+    assert.throws(
+      () => matchesQuery({ num: { $type: 2 as never } }, typed),
+      /\$type must be a type name string/
+    );
+  });
+
   // ── $not ────────────────────────────────────────────────────────────────
 
   it("matches $not negating a comparison", () => {

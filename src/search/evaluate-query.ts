@@ -1,5 +1,5 @@
 import { compileQuery } from "./compile-query.js";
-import type { CompiledQuery, DocumentRecord, DocumentValue, FieldOperator, Query, QueryValue } from "./types.js";
+import type { CanonicalTypeName, CompiledQuery, DocumentRecord, DocumentValue, FieldOperator, Query, QueryValue } from "./types.js";
 
 export function matchesQuery(query: Query, document: DocumentRecord): boolean {
   return evaluateCompiledQuery(compileQuery(query), document);
@@ -60,6 +60,13 @@ export function evaluateFieldOperator(operator: FieldOperator, value: QueryValue
       // g/y flags, so `test` is stateless here.
       return typeof value === "string" && operator.regex.test(value);
 
+    case "type": {
+      // A missing field has no type and never matches.
+      if (!hasField) return false;
+      const actual = jsonTypeOf(value);
+      return operator.types.includes(actual);
+    }
+
     case "not":
       return !operator.operators.every((op) => evaluateFieldOperator(op, value, hasField));
   }
@@ -99,4 +106,21 @@ export function valuesEqual(left: QueryValue, right: QueryValue): boolean {
 
 function isDocumentObject(value: QueryValue): value is Record<string, DocumentValue> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Resolves the canonical `$type` name of a stored field value. Arrays report
+ * `"array"` and plain objects report `"object"`; `null` is its own type. The
+ * caller guarantees the field exists, so `undefined` is never passed here.
+ */
+function jsonTypeOf(value: QueryValue): CanonicalTypeName {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+
+  switch (typeof value) {
+    case "boolean": return "boolean";
+    case "number":  return "number";
+    case "string":  return "string";
+    default:        return "object";
+  }
 }

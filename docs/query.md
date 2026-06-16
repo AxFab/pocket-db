@@ -75,6 +75,26 @@ flags on the RegExp instead.
 
 `$regex` is always evaluated in the residual pass; no index supports it.
 
+### `$type`
+
+Matches documents where the field value has one of the given JSON types. The
+operand is a single type name or an array of names (the value matches if it is
+any of them). A missing field never matches.
+
+```ts
+collection.find({ score: { $type: "number" } })
+collection.find({ tags: { $type: "array" } })
+collection.find({ value: { $type: ["string", "number"] } })
+```
+
+Accepted type names: `null`, `boolean` (alias `bool`), `number`, `string`,
+`array`, and `object`. `array` is reported for arrays and `object` only for
+plain objects (never arrays); `null` is its own type, distinct from `object`.
+Names are case-sensitive — unknown names, an empty array, and non-string
+entries throw at compile time.
+
+`$type` is always evaluated in the residual pass; no index supports it.
+
 ### `$and`
 
 Combines multiple sub-queries with logical AND. The result matches documents
@@ -93,7 +113,7 @@ Top-level fields in the same query object are already implicitly ANDed, so
 `$and` is only needed when multiple conditions target the same field or when
 explicit grouping is required.
 
-Unsupported operators (e.g. `$where`, `$type`, `$size`) throw at query
+Unsupported operators (e.g. `$where`, `$size`) throw at query
 compilation time.
 
 ## Query Compilation

@@ -137,7 +137,9 @@ Batch methods (`insertMany`, `updateMany`, `deleteMany`) wrap their individual r
 
 ### Query Compilation (`src/search/compile-query.ts`)
 
-Supported query operators: `$eq` (implicit from bare value), `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$regex` (with `$options`), `$not`, `$and`, `$or`, `$nor`.
+Supported query operators: `$eq` (implicit from bare value), `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$type`, `$regex` (with `$options`), `$not`, `$and`, `$or`, `$nor`.
+
+`$type` matches a field by its JSON type. The operand is a single type name or an array of names (matches if any). Accepted names: `null`, `boolean` (alias `bool`), `number`, `string`, `array`, `object` — `array`/`object`/`null` are kept distinct. A missing field never matches. Always evaluated in the residual pass (no index support).
 
 Unsupported operators throw at compile time.
 
@@ -224,6 +226,8 @@ pocketDb("./data.pdb")
 
 `Collection` exposes `getIndexes(): IndexInfo[]` (where `IndexInfo = { name: string; type: string }`) and `existsIndex(name): boolean` for index introspection.
 
+`Database.stats(): DatabaseStats` and `Collection.stats(): CollectionStats` report usage. The cheap fields — `sizeOnDisk` (from `FileStorage.size`, the in-memory `currentOffset`), `collectionCount`, `documentCount` (primary index `size`), `indexCount` — come straight from memory. The history fields — `operationCount`, `tombstoneCount`, `liveBytes`, `deadBytes` — require one forward scan of the log (`computeStorageStats` in `database.ts`), which reuses `shouldKeepOperation` for liveness so `deadBytes` is exactly what `compact()` would reclaim. Records of dropped collections count toward the global totals but are not attributed to any collection. Per-collection stats are produced by the same scan and injected into `PocketCollection` as a `storageStats` callback (no back-reference to the database). The invariant `sizeOnDisk === FILE_HEADER_BYTES + liveBytes + deadBytes` always holds.
+
 ### TypeScript Configuration
 
 - **ESM only** (`"type": "module"`, `"module": "NodeNext"`). All internal imports must use `.js` extensions even for `.ts` source files.
@@ -249,7 +253,7 @@ pocketDb("./data.pdb")
 - Collections, JSON documents, auto `_id`
 - `insertOne` / `insertMany`, `findOne` / `find`, `updateOne` / `updateMany`, `deleteOne` / `deleteMany`
 - Update operators: `$set`, `$unset`, `$inc`, `$mul`, `$min`, `$max`, `$rename`, `$currentDate`, `$push`, `$addToSet`, `$pop`, `$pull`, `$pullAll`
-- Query operators: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$regex`/`$options`, `$not`, `$and`, `$or`, `$nor`
+- Query operators: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$type`, `$regex`/`$options`, `$not`, `$and`, `$or`, `$nor`
 - Secondary indexes: `StringIndex` (`$eq`, `$in`) and `NumberIndex` (`$eq`, `$in`, `$gt`, `$gte`, `$lt`, `$lte`)
 - `count()` on cursor, `countDocuments()` on collection
 - `sort()` on cursor (up to 4 fields, ascending/descending, stable missing-value semantics)
@@ -260,6 +264,7 @@ pocketDb("./data.pdb")
 - `pocketDb(path, options?)` convenience alias for `open()`
 - `Database.getCollections()` / `Database.existsCollection(name)`
 - `Collection.getIndexes()` / `Collection.existsIndex(name)`
+- `Database.stats()` / `Collection.stats()` (size on disk, document/operation/tombstone counts, reclaimable bytes)
 - Clean public API surface and TypeScript exports
 - Benchmarks vs. SQLite (in-memory and file-backed) and JSON file
 

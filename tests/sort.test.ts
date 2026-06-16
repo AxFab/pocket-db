@@ -266,6 +266,17 @@ describe("sort — combined with limit and skip", () => {
     db.close();
   });
 
+  it("skip + limit together slice a descending sorted result", () => {
+    const db = open({ path: join(createTempDirectory(), "test.pdb") });
+    const col = db.collection("items");
+    col.insertMany([{ n: 5 }, { n: 1 }, { n: 3 }, { n: 2 }, { n: 4 }]);
+
+    // Sorted desc → [5, 4, 3, 2, 1]; skip 1 → [4, 3, 2, 1]; limit 3 → [4, 3, 2].
+    const ns = pluck<number>(col.find().sort({ n: -1 }).skip(1).limit(3).toArray(), "n");
+    assert.deepEqual(ns, [4, 3, 2]);
+    db.close();
+  });
+
   it("chaining order does not affect semantics: sort().limit().skip()", () => {
     const db = open({ path: join(createTempDirectory(), "test.pdb") });
     const col = db.collection("items");

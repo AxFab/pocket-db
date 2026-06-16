@@ -25,6 +25,7 @@ import type {
   Collection,
   Cursor,
   CreateIndexOptions,
+  CollectionStats,
   CreateIndexResult,
   DeleteManyResult,
   DeleteOneResult,
@@ -33,6 +34,7 @@ import type {
   InsertManyResult,
   InsertOneResult,
   ReplaceOneResult,
+  StorageStatsCore,
   UpdateResult
 } from "./types.js";
 
@@ -55,8 +57,19 @@ export class PocketCollection implements Collection {
     readonly name: string,
     private readonly storage: FileStorage,
     private readonly onDrop: () => void,
-    private readonly encoder: DocumentEncoder
+    private readonly encoder: DocumentEncoder,
+    /**
+     * Provides this collection's storage counters (operation/byte tallies) via
+     * a single log scan owned by the database. Injected to avoid a back
+     * reference to {@link PocketDatabase}.
+     */
+    private readonly storageStats: () => StorageStatsCore
   ) {}
+
+  /** Number of live documents in the collection (O(1), in-memory). */
+  get documentCount(): number {
+    return this.primaryIndex.size;
+  }
 
   get indexes(): readonly SecondaryIndexDefinition[] {
     return this.indexManager.definitions;
@@ -71,6 +84,21 @@ export class PocketCollection implements Collection {
 
   existsIndex(name: string): boolean {
     return this.indexManager.definitions.some((def) => def.field === name);
+  }
+
+  stats(): CollectionStats {
+    this.assertNotDropped();
+    const core = this.storageStats();
+
+    return {
+      name: this.name,
+      documentCount: this.primaryIndex.size,
+      indexCount: this.indexManager.definitions.length,
+      operationCount: core.operationCount,
+      tombstoneCount: core.tombstoneCount,
+      liveBytes: core.liveBytes,
+      deadBytes: core.deadBytes
+    };
   }
 
   insertOne(document: Record<string, unknown>): InsertOneResult {

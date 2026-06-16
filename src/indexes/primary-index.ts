@@ -9,6 +9,11 @@ export class InMemoryPrimaryIndex implements PrimaryIndex {
 
   private readonly candidatesById = new Map<string, IndexCandidate>();
 
+  /** Number of live documents tracked by this index (O(1)). */
+  get size(): number {
+    return this.candidatesById.size;
+  }
+
   add(_document: DocumentRecord, candidate: IndexCandidate): void {
     this.set(candidate.id, candidate.offset);
   }

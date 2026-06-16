@@ -32,6 +32,14 @@ export class FileStorage {
   }
 
   /**
+   * Current size of the file on disk in bytes (file header + every record).
+   * Maintained in memory, so reading it costs no syscall.
+   */
+  get size(): number {
+    return this.currentOffset;
+  }
+
+  /**
    * Open or create a database file at `path`.
    *
    * @param path - Filesystem path to the `.pdb` file.
