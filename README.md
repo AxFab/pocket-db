@@ -40,6 +40,7 @@ That's the whole setup — open a file, work with collections of JSON documents,
 - 📄 **Single file** — back up your whole database by copying one `.pdb` file
 - 🍃 **MongoDB-style API** — `find` / `insert` / `update` with the operators you already know
 - ⚡ **Append-only writes** — every mutation is a fast sequential append, with crash-safe batches
+- 🛡️ **Safe reads** — every query returns an independent copy, so mutating a result never corrupts your stored data
 
 Inspired by SQLite (one embedded file) and MongoDB (document model), but intentionally
 small. The core rule — *never reserialise the whole database on a write* — makes every
@@ -104,6 +105,12 @@ A database holds any number of named collections. Collections are created implic
 ### Document IDs
 
 Every document gets a `_id`: a 24-character lowercase hex string (12-byte ObjectId layout — 4-byte timestamp, 5-byte random, 3-byte counter). You can supply your own `_id` on insert as long as it matches that format.
+
+### Safe reads
+
+Every document returned by `findOne`, `find`, or a cursor is a fresh, independent object that you fully own. Mutating a query result never affects what is stored — exactly what you'd expect from a real database. This holds whether the read came from disk or from the [hot-document cache](#hot-document-cache) (cached reads are deep-cloned on the way out).
+
+This is a deliberate guarantee: some in-memory stores return references to their internal objects by default, which is faster but means modifying a query result silently corrupts the database. Pocket DB always isolates your results.
 
 ---
 
@@ -438,6 +445,13 @@ write model. Opt in with `collection.enableCache(maxBytes)` and hot documents st
 in memory: single-document reads get ~2.9× faster and full scans ~1.8× faster on the
 2,000-document JSON benchmark. It is off by default and trades memory for speed — see
 [docs/cache.md](docs/cache.md).
+
+**Reading the read numbers fairly.** pocket-db returns an independent copy of every
+document, so mutating a result never touches stored data. Some in-memory stores in this
+table return references to their internal objects by default — fast, but modifying a query
+result silently corrupts the database. Part of their read-throughput lead is simply the
+defensive copy pocket-db makes and they skip; it buys a correctness guarantee we keep on
+purpose.
 
 **In short:** if your workload is write-heavy, needs durability, or outgrows memory,
 pocket-db is the right tool. If you need pure in-memory read throughput on a dataset that
