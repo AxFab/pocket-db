@@ -103,6 +103,13 @@
       "description": "Planned features and upcoming improvements for the @axfab/pocket-db npm package."
     },
     {
+      "id": "benchmarks_results.html",
+      "label": "Benchmark results",
+      "src": "benchmarks/RESULTS.md",
+      "title": "Benchmark results — Pocket DB",
+      "description": "Benchmarked against other embedded stores on 1,000 documents across the operations in our benchmark suite."
+    },
+    {
       "id": "claude.html",
       "label": "Claude instructions",
       "src": "CLAUDE.md",

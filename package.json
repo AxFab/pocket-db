@@ -19,7 +19,8 @@
     "docs/",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
-    "LICENSE"
+    "LICENSE",
+    "benchmarks/RESULTS.md"
   ],
   "scripts": {
     "build:esm": "tsc -p tsconfig.json",

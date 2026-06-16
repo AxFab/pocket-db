@@ -399,34 +399,17 @@ The `docs/` folder contains in-depth documentation available as a wiki:
 ## Performance
 
 Pocket DB is built for fast, durable writes. Benchmarked against other embedded
-stores on 1,000 documents across ten common operations — ops/sec, higher is better,
-`*` marks the fastest adapter per operation.
+stores on 1,000 documents across the operations in our benchmark suite — ops/sec,
+higher is better.
 
 **The headline:** for durable writes, pocket-db is **40–700× faster** than every other
 file-backed store here, and lands within ~12% of in-memory SQLite — which isn't even
 durable.
 
-```
-Benchmark results — 1,000 documents
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-Operation                      pocket-db         pocket-db         pocket-db          pocket-db        pocket-db            sqlite           sqlite          json-file           lowdb            lokijs
-                           (strict-json)    (relaxed-json) (relaxed-json-cache) (relaxed-bson).   (relaxed-amf3)          (memory)           (file)
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-insertOne                            339           233,627           253,834 *         203,173           210,416           204,701             4,040             4,314             2,492             1,101
-insertMany (100)                       3             2,343             2,505             2,129             2,214             2,715 *             753             1,042               812               276
-findById                          47,028           224,255           618,972           187,711           180,177         1,022,015           237,400        12,121,212 *         319,331         3,745,908
-findByIdHot (16)                 135,115           249,159           486,541           213,009           214,479         1,212,134           245,987        21,145,404 *      11,411,174         7,277,131
-findAll                               95                92               145                63                64               341               357           116,720           890,869 *           1,131
-findByName (scan)                     92                90               142                62                63               529               512            19,977            24,299 *           7,975
-findByNameRegex (scan)                91                89               139                62                63               328               328             7,905             8,666 *           3,561
-findByRole (index)                   260               257               394               182               184               885               881            18,262            22,068 *           3,104
-updateOne                            338           112,893           142,300            98,013            94,681           381,764 *           4,920               878               622               192
-deleteOne                            399           392,242           492,308           529,295 *         482,736           424,654             5,353             1,008               712               229
-countAll                           7,776            10,992            10,461            11,648            10,688         2,188,263           278,247        40,227,851 *      38,684,720        37,535,001
-sortByScore (desc)                    87                86               135                61                60               289               290             4,921             5,043 *           1,110
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-All values in ops/sec.  * = fastest for this operation.
-```
+📊 **[Full results table → benchmarks/RESULTS.md](benchmarks/RESULTS.md)** — all
+adapters and operations side by side. Regenerate anytime with `npm run bench`, which
+prints a width-aware ranked view to the console and refreshes `RESULTS.md` and
+`results.json`.
 
 ### Reading the results
 

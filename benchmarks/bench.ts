@@ -1,9 +1,12 @@
 /**
  * Pocket DB benchmark suite.
  *
- * Compares pocket-db against SQLite (in-memory), SQLite (file), a naive
- * JSON-file store, lowdb, and LokiJS across eight common document-database
- * operations.
+ * Compares pocket-db (several durability / serialization / cache configs)
+ * against SQLite (in-memory and file), a naive JSON-file store, lowdb, and
+ * LokiJS across the operations defined in `suite.ts`.
+ *
+ * Prints a width-aware ranked view to the console and writes the full matrix to
+ * `benchmarks/RESULTS.md` (+ `results.json`) for the README.
  *
  * Usage:
  *   npm run bench
@@ -16,7 +19,7 @@ import { SqliteAdapter } from "./adapters/sqlite.js";
 import { JsonFileAdapter } from "./adapters/json-file.js";
 import { LowDbAdapter } from "./adapters/lowdb.js";
 import { LokiJsAdapter } from "./adapters/lokijs.js";
-import { runBenchmarks, printTable } from "./runner.js";
+import { runBenchmarks, renderConsole, writeResults } from "./runner.js";
 
 const adapters = [
   new PocketDbAdapter('strict-json'),
@@ -37,4 +40,9 @@ console.log("");
 console.log("Running (. = case completed, ! = case failed):");
 
 const results = runBenchmarks(adapters);
-printTable(results);
+
+console.log(renderConsole(results));
+
+const { markdownPath, jsonPath } = writeResults(results);
+console.log("");
+console.log(`Full results written to:\n  ${markdownPath}\n  ${jsonPath}`);

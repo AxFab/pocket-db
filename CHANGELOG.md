@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Benchmark suite extended with a cache-vs-no-cache `pocket-db (relaxed-json-cache)` adapter
   and a `findByIdHot (16)` hot-working-set case.
+- Benchmark output reworked to stay readable as adapters and operations grow: the console
+  now prints a width-aware, per-operation ranked view, and `npm run bench` writes the full
+  matrix to `benchmarks/RESULTS.md` and `benchmarks/results.json`.
+
+### Tooling
+
+- Added an ESLint setup (flat config, `typescript-eslint`) with `npm run lint` /
+  `npm run lint:fix`; `lint` now runs as part of `prepublishOnly`.
 
 ### Documentation
 

@@ -1,4 +1,7 @@
+import { writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 import type { Adapter } from "./adapters/adapter.js";
 import { generateDocs } from "./data.js";
 import { CASES, INITIAL_DATASET_SIZE, type BenchCase } from "./suite.js";
@@ -84,82 +87,142 @@ export function runBenchmarks(adapters: Adapter[]): AdapterResult[] {
 }
 
 // ---------------------------------------------------------------------------
-// Table rendering
+// Rendering
+//
+// Rendering is split from collection so the same AdapterResult[] can be shown
+// several ways. Adapters are never laid out as columns in the console view —
+// they are ranked vertically per operation — so output stays readable no matter
+// how many adapters or operations are added.
 // ---------------------------------------------------------------------------
 
-const COL_WIDTH = 16;   // numeric field width
-const COL_TOTAL = COL_WIDTH + 2;  // + 2 chars for "  " or " *" marker
-const LABEL_WIDTH = 24;
-
-function fmt(n: number): string {
-  if (n < 0) return "(error)".padStart(COL_WIDTH);
-  return n.toLocaleString("en-US").padStart(COL_WIDTH);
+/** Formats an ops/sec value, or `(error)` for a failed case (`opsPerSecond < 0`). */
+function formatOps(opsPerSecond: number): string {
+  return opsPerSecond < 0 ? "(error)" : opsPerSecond.toLocaleString("en-US");
 }
 
-function separator(adapterCount: number): string {
-  return "─".repeat(LABEL_WIDTH) + "─".repeat(COL_TOTAL * adapterCount);
+/** Ops for a given adapter + case, or `-1` when the case did not run. */
+function opsFor(result: AdapterResult, caseName: string): number {
+  return result.cases.get(caseName)?.opsPerSecond ?? -1;
 }
 
-function bestIndex(row: number[]): number {
-  let best = 0;
-  for (let i = 1; i < row.length; i++) {
-    if (row[i] > row[best]) best = i;
-  }
-  return best;
-}
-
-export function printTable(results: AdapterResult[]): void {
-  const adapterNames = results.map((r) => r.adapterName);
+/**
+ * Width-aware console view: one block per operation, adapters ranked
+ * fastest-first with a proportional bar. Bar length is linear against the
+ * fastest adapter in that block, so orders-of-magnitude differences read as an
+ * (almost) empty bar — which is the intended signal. Adding adapters grows each
+ * block downward; adding operations adds blocks. Nothing ever grows wider than
+ * the terminal.
+ */
+export function renderConsole(results: AdapterResult[], terminalWidth = process.stdout.columns ?? 80): string {
   const caseNames = CASES.map((c) => c.name);
+  const nameWidth = Math.min(30, Math.max(1, ...results.map((r) => r.adapterName.length)));
 
-  console.log("");
-  console.log(`Benchmark results — ${INITIAL_DATASET_SIZE.toLocaleString("en-US")} documents`);
-  console.log(separator(adapterNames.length));
+  const lines: string[] = [
+    "",
+    `Benchmark results — ${INITIAL_DATASET_SIZE.toLocaleString("en-US")} documents, Node.js ${process.version}`,
+    ""
+  ];
 
-  // Header row.
-  const header =
-    "Operation".padEnd(LABEL_WIDTH) +
-    adapterNames.map((n) => n.padStart(COL_TOTAL)).join("");
-  console.log(header);
-  console.log(separator(adapterNames.length));
-
-  // One row per benchmark case.
   for (const caseName of caseNames) {
-    const values = results.map((r) => r.cases.get(caseName)?.opsPerSecond ?? -1);
-    const best = bestIndex(values);
+    const rows = results
+      .map((r) => ({ name: r.adapterName, ops: opsFor(r, caseName) }))
+      .sort((a, b) => b.ops - a.ops); // fastest first; errors (-1) sink to the bottom
 
-    const cells = values.map((v, i) => {
-      const marker = i === best && v > 0 ? " *" : "  ";
-      return fmt(v) + marker;
-    });
+    const maxOps = Math.max(0, ...rows.map((r) => r.ops));
+    const numWidth = Math.max(...rows.map((r) => formatOps(r.ops).length));
+    const barWidth = Math.max(0, terminalWidth - 2 - nameWidth - 2 - numWidth - 1);
 
-    console.log(caseName.padEnd(LABEL_WIDTH) + cells.join(""));
-  }
+    lines.push(caseName);
 
-  console.log(separator(adapterNames.length));
-  console.log("All values in ops/sec.  * = fastest for this operation.");
-  console.log("");
+    for (const row of rows) {
+      const name = row.name.length > nameWidth
+        ? `${row.name.slice(0, nameWidth - 1)}…`
+        : row.name.padEnd(nameWidth);
+      const num = formatOps(row.ops).padStart(numWidth);
 
-  // Per-adapter summary: geometric mean of normalised scores vs pocket-db.
-  const pocketDbResults = results.find((r) => r.adapterName === "pocket-db");
-  if (pocketDbResults && results.length > 1) {
-    console.log("Relative throughput vs pocket-db (geometric mean across all operations):");
-    for (const result of results) {
-      if (result.adapterName === "pocket-db") continue;
-      const ratios: number[] = [];
-      for (const caseName of caseNames) {
-        const ours = pocketDbResults.cases.get(caseName)?.opsPerSecond ?? 0;
-        const theirs = result.cases.get(caseName)?.opsPerSecond ?? 0;
-        if (ours > 0 && theirs > 0) {
-          ratios.push(theirs / ours);
-        }
+      let bar = "";
+      if (row.ops > 0 && maxOps > 0 && barWidth >= 1) {
+        bar = "█".repeat(Math.round((row.ops / maxOps) * barWidth));
       }
-      if (ratios.length === 0) continue;
-      const geoMean = Math.pow(ratios.reduce((a, b) => a * b, 1), 1 / ratios.length);
-      const sign = geoMean >= 1 ? "+" : "";
-      const pct = ((geoMean - 1) * 100).toFixed(1);
-      console.log(`  ${result.adapterName.padEnd(20)} ${sign}${pct}%`);
+
+      lines.push(`  ${name}  ${num} ${bar}`.trimEnd());
     }
-    console.log("");
+
+    lines.push("");
   }
+
+  lines.push("ops/sec, higher is better. Full table: benchmarks/RESULTS.md");
+  return lines.join("\n");
+}
+
+/**
+ * GitHub-flavoured Markdown matrix (operations × adapters) for the README.
+ * Numeric columns are right-aligned and the fastest adapter per operation is
+ * bolded; failed cases render as an em dash.
+ */
+export function renderMarkdown(results: AdapterResult[]): string {
+  const caseNames = CASES.map((c) => c.name);
+  const names = results.map((r) => r.adapterName);
+
+  const lines: string[] = [
+    "# Benchmark results",
+    "",
+    `- **Dataset:** ${INITIAL_DATASET_SIZE.toLocaleString("en-US")} documents`,
+    `- **Runtime:** Node.js ${process.version}`,
+    `- **Generated:** ${new Date().toISOString().slice(0, 10)}`,
+    "",
+    "All values in operations per second; higher is better. **Bold** = fastest adapter for that operation.",
+    "",
+    `| Operation | ${names.join(" | ")} |`,
+    `| :--- | ${names.map(() => "---:").join(" | ")} |`
+  ];
+
+  for (const caseName of caseNames) {
+    const values = results.map((r) => opsFor(r, caseName));
+    const best = Math.max(...values);
+    const cells = values.map((v) => {
+      if (v < 0) return "—";
+      const text = v.toLocaleString("en-US");
+      return v === best ? `**${text}**` : text;
+    });
+    lines.push(`| ${caseName} | ${cells.join(" | ")} |`);
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
+/** Machine-readable results for tooling / regression tracking. */
+export function renderJson(results: AdapterResult[]): string {
+  return JSON.stringify(
+    {
+      generatedAt: new Date().toISOString(),
+      node: process.version,
+      datasetSize: INITIAL_DATASET_SIZE,
+      adapters: results.map((r) => r.adapterName),
+      operations: CASES.map((c) => c.name),
+      results: results.map((r) => ({
+        adapter: r.adapterName,
+        cases: Object.fromEntries(r.cases)
+      }))
+    },
+    null,
+    2
+  );
+}
+
+/**
+ * Writes `RESULTS.md` and `results.json` into the `benchmarks/` source folder
+ * (resolved relative to this module, so it works regardless of cwd). Returns
+ * the written paths for logging.
+ */
+export function writeResults(results: AdapterResult[]): { markdownPath: string; jsonPath: string } {
+  const benchDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "benchmarks");
+  const markdownPath = join(benchDir, "RESULTS.md");
+  const jsonPath = join(benchDir, "results.json");
+
+  writeFileSync(markdownPath, `${renderMarkdown(results)}\n`);
+  writeFileSync(jsonPath, `${renderJson(results)}\n`);
+
+  return { markdownPath, jsonPath };
 }
