@@ -1,9 +1,13 @@
 {
+  // Unlike expediate's tsconfig.cjs.json, this one is the actual build config
+  // (not just a type-check reference): pocket-db's src/ has no JSON import
+  // attributes, so plain tsc can emit working CommonJS directly — no esbuild
+  // bundling step required.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "outDir": "dist/cjs",
+    "outDir": "./dist/cjs",
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false

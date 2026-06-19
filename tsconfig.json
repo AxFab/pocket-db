@@ -9,11 +9,15 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "outDir": "dist",
-    "rootDir": ".",
+    "outDir": "./dist",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "benchmarks/**/*.ts"]
+  // Only src/ is compiled: tests run straight from .ts via tsx (no build step,
+  // see "test" script) and benchmarks/ is its own workspace. Keeping this
+  // include list to src/ only is also what keeps dist/ flat (dist/index.js,
+  // not dist/src/index.js) since tsc infers rootDir from the include set.
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests", "benchmarks"]
 }

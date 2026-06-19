@@ -1,18 +1,17 @@
 # The published package is controlled by the "files" field in package.json,
-# which whitelists only dist/src/. Everything else is excluded by default.
+# which whitelists only dist/. Everything else is excluded by default.
 #
 # This file exists to explicitly exclude files that npm would otherwise include
 # regardless of the "files" field (e.g. .npmignore itself is always excluded,
 # but README.md, LICENSE, and package.json are always included by npm).
 
 # Development and build artifacts not needed by consumers
-dist/tests/
-dist/benchmarks/
 src/
 tests/
 benchmarks/
 docs/
 *.bench.ts
 tsconfig.json
+tsconfig.cjs.json
 CLAUDE.md
 ROADMAP.md

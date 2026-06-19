@@ -7,16 +7,17 @@ import globals from "globals";
  * ESLint flat configuration for Pocket DB.
  *
  * - Library source (`src/`) is held to the strict typescript-eslint rules.
- * - Tests and benchmarks are linted with the same base but a few rules relaxed,
- *   since they legitimately use `any` casts (to reach internals) and
- *   non-null assertions on fixtures.
+ * - Tests are linted with the same base but a few rules relaxed, since they
+ *   legitimately use `any` casts (to reach internals) and non-null assertions
+ *   on fixtures.
  *
  * Run with `npm run lint` (or `npm run lint:fix` to autofix).
  */
 export default tseslint.config(
-  // Never lint build output or third-party code.
+  // Never lint build output, deps, or the benchmarks sub-workspace (own
+  // package, not part of the published library — same convention as expediate).
   {
-    ignores: ["dist/**", "node_modules/**"]
+    ignores: ["dist/**", "node_modules/**", "benchmarks/**"]
   },
 
   // Base JS + TypeScript recommended rule sets.
@@ -48,9 +49,9 @@ export default tseslint.config(
     }
   },
 
-  // Relaxations for tests and benchmarks.
+  // Relaxations for tests.
   {
-    files: ["tests/**/*.ts", "benchmarks/**/*.ts"],
+    files: ["tests/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-require-imports": "off",

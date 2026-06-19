@@ -11,23 +11,27 @@ The core constraint is **never reserializing the entire database on write**. All
 ## Commands
 
 ```bash
-npm install          # install dependencies (typescript + @types/node; better-sqlite3 for benchmarks)
-npm run build        # compile TypeScript → dist/
-npm test             # build then run all tests
-npm run bench        # build then run the benchmark
+npm install          # install dependencies (typescript, @types/node, eslint, tsx)
+npm run build        # compile TypeScript → dist/ (ESM + CJS, see below)
+npm test             # run all tests directly from .ts via tsx, no build needed
+npm run test:coverage # same, with Node's native coverage instrumentation
+npm run bench        # run the benchmark suite (separate "benchmarks" workspace)
+npm run lint         # eslint .
 ```
 
 To run a single test file:
 ```bash
-npm run build && node --test "dist/tests/indexes.test.js"
+node --import tsx --test "tests/indexes.test.ts"
 ```
 
 To run tests matching a name pattern:
 ```bash
-npm run build && node --test --test-name-pattern="creates a string index" "dist/tests/**/*.test.js"
+node --import tsx --test --test-name-pattern="creates a string index" "tests/*.test.ts"
 ```
 
-There is no linter configured yet.
+Benchmarks live in `benchmarks/`, a separate npm workspace (`pocket-db-benchmarks`) so
+comparison-only dependencies (better-sqlite3, lokijs, lowdb) never pollute the
+published package's own `devDependencies`.
 
 ## Architecture Overview
 
@@ -253,8 +257,8 @@ pocketDb("./data.pdb")
 
 - **ESM only** (`"type": "module"`, `"module": "NodeNext"`). All internal imports must use `.js` extensions even for `.ts` source files.
 - Strict mode enabled. `target: "ES2022"`.
-- `outDir: "dist"`, `rootDir: "."` — tests and benchmarks compile into `dist/tests/` and `dist/benchmarks/`.
-- Tests use Node's built-in `node:test` runner and `node:assert/strict`. No external test framework.
+- `outDir: "dist"`, only `src/**/*` is included — `tsc` infers `rootDir: "src"`, so the build is flat (`dist/index.js`, `dist/cjs/index.js`), no `dist/src/` nesting. Tests and benchmarks are never compiled.
+- Tests use Node's built-in `node:test` runner and `node:assert/strict`, executed straight from `.ts` via `node --import tsx --test`. No external test framework, no build step.
 
 ## Key Invariants and Design Decisions
 
@@ -297,7 +301,7 @@ pocketDb("./data.pdb")
 
 ## Test Patterns
 
-All tests create a fresh temporary directory per test (using `mkdtempSync`) and clean up in `afterEach`. Database files use `.pdb` extension. Tests import directly from `src/` (not from `dist/`) but the test runner runs compiled output from `dist/` — building first is required.
+All tests create a fresh temporary directory per test (using `mkdtempSync`) and clean up in `afterEach`. Database files use `.pdb` extension. Tests import directly from `src/` and run straight from `.ts` via `tsx` — no build step required before `npm test`.
 
 When testing storage-layer behavior (e.g. crash recovery, transaction replay), tests manipulate `FileStorage` directly and re-open the database to verify replay semantics. These tests cast `(collection as any).id` to access the internal collection Buffer id needed to construct raw payloads.
 

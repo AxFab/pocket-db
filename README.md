@@ -62,7 +62,9 @@ pipelines, or anything that really wants a server database.
 npm install @axfab/pocket-db
 ```
 
-No native binaries. No optional dependencies. Pure TypeScript compiled to ESM.
+No native binaries. No optional dependencies. Pure TypeScript compiled to ESM. Node.js ≥ 18 is required (the package only relies on `structuredClone` and `Object.hasOwn`, both available since Node 17/16.9).
+
+**Bun / Deno:** not officially tested, but should work — the package touches only `node:fs`, `node:path`, `node:os`, `node:crypto`, and `Buffer`, all well-covered by both runtimes' Node compatibility layers, and `with { type: 'json' }` isn't used here so there's no import-attribute version floor to worry about.
 
 ---
 
