@@ -28,43 +28,51 @@ export class FileLock {
   }
 
   private tryAcquire(): void {
-    // Attempt an exclusive create — succeeds only if the file does not exist.
-    try {
-      const fd = openSync(this.lockPath, "wx");
-      writeSync(fd, String(process.pid));
-      closeSync(fd);
-      return;
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
-        throw err;
+    // Use a loop instead of recursion to avoid a stack overflow if the lock
+    // file cannot be removed (e.g. permission error caught silently below).
+    const MAX_RETRIES = 3;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      // Attempt an exclusive create — succeeds only if the file does not exist.
+      try {
+        const fd = openSync(this.lockPath, "wx");
+        writeSync(fd, String(process.pid));
+        closeSync(fd);
+        return;
+      } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+          throw err;
+        }
+      }
+
+      // Lock file already exists — determine whether the owner is still alive.
+      let holdingPid: number | null = null;
+
+      try {
+        holdingPid = parseInt(readFileSync(this.lockPath, "utf8").trim(), 10);
+      } catch {
+        // Cannot read the lock file; treat as stale.
+      }
+
+      if (holdingPid !== null && !isNaN(holdingPid) && isProcessAlive(holdingPid)) {
+        throw new Error(
+          `Cannot open database: already in use by process ${holdingPid}. ` +
+          `Close the other connection first, or delete "${this.lockPath}" ` +
+          `if that process has crashed.`
+        );
+      }
+
+      // Stale lock — remove it and retry.
+      try {
+        unlinkSync(this.lockPath);
+      } catch {
+        // Another process may have cleaned it up concurrently; proceed.
       }
     }
 
-    // Lock file already exists — determine whether the owner is still alive.
-    let holdingPid: number | null = null;
-
-    try {
-      holdingPid = parseInt(readFileSync(this.lockPath, "utf8").trim(), 10);
-    } catch {
-      // Cannot read the lock file; treat as stale.
-    }
-
-    if (holdingPid !== null && !isNaN(holdingPid) && isProcessAlive(holdingPid)) {
-      throw new Error(
-        `Cannot open database: already in use by process ${holdingPid}. ` +
-        `Close the other connection first, or delete "${this.lockPath}" ` +
-        `if that process has crashed.`
-      );
-    }
-
-    // Stale lock — remove it and retry.
-    try {
-      unlinkSync(this.lockPath);
-    } catch {
-      // Another process may have cleaned it up concurrently; proceed.
-    }
-
-    this.tryAcquire();
+    throw new Error(
+      `Cannot open database: failed to acquire lock "${this.lockPath}" after ${MAX_RETRIES} attempts.`
+    );
   }
 }
 

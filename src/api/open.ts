@@ -23,9 +23,16 @@ export function open(options: OpenOptions = {}): Database {
     : SERIALIZATION_FORMAT_JSON;
 
   const lock = FileLock.acquire(dbPath);
-  const storage = FileStorage.open(dbPath, options.durability ?? "relaxed", requestedFormatByte);
-  const encoder = getEncoder(storage.serializationFormat);
-  return new PocketDatabase(storage, lock, encoder);
+  try {
+    const storage = FileStorage.open(dbPath, options.durability ?? "relaxed", requestedFormatByte);
+    const encoder = getEncoder(storage.serializationFormat);
+    return new PocketDatabase(storage, lock, encoder);
+  } catch (err) {
+    // Always release the lock if anything goes wrong during open/init, so the
+    // database file is not left permanently locked after a failed open call.
+    lock.release();
+    throw err;
+  }
 }
 
 /**

@@ -1,9 +1,10 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { pocketDb } from "../src/index.js";
+import { FILE_HEADER_BYTES } from "../src/storage/constants.js";
 
 const tempDirectories: string[] = [];
 
@@ -80,5 +81,28 @@ describe("file lock", () => {
     db.close();
 
     assert.ok(!existsSync(`${path}.lock`));
+  });
+
+  it("releases the lock file when open() throws during database initialisation", () => {
+    const path = join(createTempDirectory(), "test.pdb");
+
+    // Create a valid database with one document so the file has operation records.
+    const db = pocketDb({ path });
+    db.collection("items").insertOne({ x: 1 });
+    db.close();
+
+    // Corrupt the first byte of the first operation record (right after the
+    // 12-byte file header). This flips one nibble of the identifier, causing a
+    // CRC32 mismatch that makes loadCollections() throw during open().
+    const raw = readFileSync(path);
+    raw[FILE_HEADER_BYTES] ^= 0xff;
+    writeFileSync(path, raw);
+
+    // open() must throw (CRC mismatch) and must not leave the lock on disk.
+    assert.throws(() => pocketDb({ path }));
+    assert.ok(
+      !existsSync(`${path}.lock`),
+      "lock file must be removed even when open() throws during initialisation"
+    );
   });
 });
