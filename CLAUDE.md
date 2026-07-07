@@ -188,6 +188,8 @@ Index definitions are persisted in the log (`idx1`). Index contents are rebuilt 
 
 **`InMemoryPrimaryIndex`**: handles `_id` equality and `$in` lookups. `snapshot()` returns all `{ id, offset }` pairs for full-collection scans.
 
+**Unique indexes.** `createIndex(field, { type, unique: true })` (default `unique: false`) turns a `StringIndex`/`NumberIndex` into a uniqueness constraint. Every `QueryIndex` implements `findOwner(document, excludeId?)` (the id currently holding the same value, if any) and `findDuplicate()` (scans the index's own contents for any value shared by more than one id). `IndexManager.assertUnique(document, excludeId?)` and `IndexManager.assertUniqueBatch(entries)` call `findOwner` across every `unique` index and throw on conflict; `assertUniqueBatch` additionally tracks values seen earlier in the same batch, since sibling documents in `insertMany`/`updateMany` are invisible to each other until the batch is applied. These are called from `PocketCollection` **before** `appendPutDocument` in `insertOne`, `insertMany`, `replaceOne`, `updateOne`, and `updateMany` — writes are append-only, so the check must happen ahead of the append, not after. `excludeId` is the document's own id for in-place writes (replace/update), so a document can keep its own value. Only values matching the index's own type participate (same guard as `add()`); a missing field or wrong-typed value never conflicts. Creating a `unique` index over a collection with pre-existing duplicates populates the index, detects the conflict via `findDuplicate()`, removes the index again, and throws — nothing is persisted. The `unique` flag itself is persisted in `idx1` (see Operation identifiers table below).
+
 ### Document Cache (`src/api/document-cache.ts`)
 
 `DocumentCache` is an optional, per-collection, byte-bounded LRU of parsed "hot" documents. It is **disabled by default**: `PocketCollection` holds `cache: DocumentCache | null = null` and only instantiates the object on `enableCache(maxBytes)`, so a collection that never opts in pays only a single `null` check on the read/write paths (this is a hard requirement — caching must have no impact when off).
@@ -247,7 +249,7 @@ pocketDb("./data.pdb")
 
 `Database` exposes `getCollections(): string[]` and `existsCollection(name): boolean` for introspection without side-effects (unlike `collection()` which creates on first access).
 
-`Collection` exposes `getIndexes(): IndexInfo[]` (where `IndexInfo = { name: string; type: string }`) and `existsIndex(name): boolean` for index introspection.
+`Collection` exposes `getIndexes(): IndexInfo[]` (where `IndexInfo = { name: string; type: string; unique: boolean }`) and `existsIndex(name): boolean` for index introspection.
 
 `Collection` exposes the hot-document cache controls `enableCache(maxBytes: number): void`, `disableCache(): void`, and `cacheStats(): DocumentCacheStats | null` (`null` when disabled). The cache is off by default; see the Document Cache section above. `DocumentCacheStats` is exported from the package root.
 
@@ -272,6 +274,7 @@ pocketDb("./data.pdb")
 - **Sort is always eager.** `sort()` reads all matching candidates before returning the first result. Narrow the candidate set with an indexed query before sorting.
 - **Missing values sort at minimum.** `null`, `undefined`, and `NaN` rank below all typed values. With direction applied: first in ascending, last in descending.
 - **The document cache is off by default and free when off.** No `DocumentCache` is instantiated until `enableCache()`; the read/write paths only pay a `null` check. It is keyed by id and versioned by offset, so it never violates cursor-snapshot semantics, and it stays correct across updates/deletes/compaction.
+- **Unique constraints are checked before the append, never after.** Because writes cannot be rolled back once appended, `assertUnique`/`assertUniqueBatch` run against the fully-built document ahead of `appendPutDocument`. A rejected `insertMany`/`updateMany` batch writes nothing at all.
 
 ## Current Development Status
 
@@ -281,6 +284,7 @@ pocketDb("./data.pdb")
 - Update operators: `$set`, `$unset`, `$inc`, `$mul`, `$min`, `$max`, `$rename`, `$currentDate`, `$push`, `$addToSet`, `$pop`, `$pull`, `$pullAll`
 - Query operators: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$type`, `$regex`/`$options`, `$not`, `$and`, `$or`, `$nor`
 - Secondary indexes: `StringIndex` (`$eq`, `$in`) and `NumberIndex` (`$eq`, `$in`, `$gt`, `$gte`, `$lt`, `$lte`)
+- Unique indexes: `createIndex(field, { type, unique: true })`, enforced on `insertOne`/`insertMany`/`replaceOne`/`updateOne`/`updateMany`
 - `count()` on cursor, `countDocuments()` on collection
 - `sort()` on cursor (up to 4 fields, ascending/descending, stable missing-value semantics)
 - `skip()` and `limit()` on cursor
@@ -295,7 +299,7 @@ pocketDb("./data.pdb")
 - Clean public API surface and TypeScript exports
 - Benchmarks vs. SQLite (in-memory and file-backed), JSON file, lowdb, and LokiJS, plus a cache vs. no-cache `pocket-db` comparison
 
-**V2 planned:** unique indexes, persisted index snapshots, automatic compaction, read snapshots, `durability: "strict" | "relaxed"` with fsync, streaming scan, improved query planner, `$or`/`$nor` index support.
+**V2 planned:** persisted index snapshots, automatic compaction, read snapshots, `durability: "strict" | "relaxed"` with fsync, streaming scan, improved query planner, `$or`/`$nor` index support.
 
 **V3 planned:** compound indexes, lightweight transactions, compression, optional native C engine.
 
@@ -308,3 +312,5 @@ When testing storage-layer behavior (e.g. crash recovery, transaction replay), t
 `existsId()` was removed from the public `Collection` interface. Tests that previously used it now use `findOne({ _id }) !== null` (with the assertion made before `db.close()` since `findOne` reads from disk).
 
 The hot-document cache is covered by `tests/document-cache.test.ts`: unit tests construct `DocumentCache` directly (imported from `src/api/document-cache.js`) to exercise offset versioning, LRU eviction, oversized-doc rejection, shrink-to-fit, and stats; integration tests go through `Collection.enableCache()` and assert priming on insert, hotness across updates, invalidation on delete, the cursor-snapshot invariant *with the cache enabled* (replace mid-cursor, still read the old version), and that mutating a returned document does not corrupt the cache. The benchmark adds a `pocket-db (relaxed-json-cache)` adapter (cache enabled via a `cache` token in the adapter mode) and a `findByIdHot (16)` case to compare against the non-cached adapter.
+
+Unique indexes are covered by `tests/unique-index.test.ts`: creation-time checks (default non-unique, creating over empty/conflict-free/conflicting collections, type/missing-field exemptions, re-creating with a mismatched `unique` flag), write-path enforcement across `insertOne`/`insertMany`/`replaceOne`/`updateOne`/`updateMany` (including in-batch collisions and "keep my own value" cases), and persistence across reopen and `compact()`. The cross-engine benchmark suite (`benchmarks/`) was intentionally left untouched — `unique` is a pocket-db-only construct not shared by the comparison adapters (SQLite, lowdb, LokiJS, JSON-file), and the existing `BenchDocument` schema has no field that's naturally unique per document.

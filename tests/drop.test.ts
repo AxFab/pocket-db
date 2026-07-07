@@ -116,7 +116,7 @@ describe("Collection dropIndex", () => {
     const result = users.dropIndex("role");
 
     assert.deepEqual(result, { acknowledged: true, field: "role" });
-    assert.deepEqual(users.indexes, [{ field: "age", type: "number" }]);
+    assert.deepEqual(users.indexes, [{ field: "age", type: "number", unique: false }]);
 
     db.close();
   });
@@ -167,7 +167,7 @@ describe("Collection dropIndex", () => {
     const second = pocketDb({ path });
     const loaded = second.collection("users");
 
-    assert.deepEqual(loaded.indexes, [{ field: "age", type: "number" }]);
+    assert.deepEqual(loaded.indexes, [{ field: "age", type: "number", unique: false }]);
     assert.deepEqual(
       loaded.find({ age: { $gt: 30 } }).toArray().map((doc) => doc.name),
       ["Ada"]
@@ -186,8 +186,8 @@ describe("Collection dropIndex", () => {
 
     const result = users.createIndex("role", { type: "string" });
 
-    assert.deepEqual(result, { acknowledged: true, field: "role", type: "string" });
-    assert.deepEqual(users.indexes, [{ field: "role", type: "string" }]);
+    assert.deepEqual(result, { acknowledged: true, field: "role", type: "string", unique: false });
+    assert.deepEqual(users.indexes, [{ field: "role", type: "string", unique: false }]);
     assert.deepEqual(
       users.find({ role: "admin" }).toArray().map((doc) => doc.name),
       ["Ada"]

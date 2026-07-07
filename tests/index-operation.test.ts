@@ -11,7 +11,8 @@ describe("create index operation payload", () => {
     const payload = encodeCreateIndexPayload({
       collectionId,
       field: "email",
-      type: "string"
+      type: "string",
+      unique: false
     });
 
     const decoded = decodeCreateIndexPayload(payload);
@@ -20,5 +21,21 @@ describe("create index operation payload", () => {
     assert.deepEqual(decoded.collectionId, collectionId);
     assert.equal(decoded.field, "email");
     assert.equal(decoded.type, "string");
+    assert.equal(decoded.unique, false);
+  });
+
+  it("round-trips the unique flag", () => {
+    const collectionId = Buffer.from([9, 8, 7, 6]);
+    const payload = encodeCreateIndexPayload({
+      collectionId,
+      field: "email",
+      type: "string",
+      unique: true
+    });
+
+    const decoded = decodeCreateIndexPayload(payload);
+
+    assert.equal(payload.byteLength % 4, 0);
+    assert.equal(decoded.unique, true);
   });
 });

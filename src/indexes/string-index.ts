@@ -6,8 +6,8 @@ export class StringIndex implements QueryIndex {
   private readonly values = new Map<string, Map<string, IndexCandidate>>();
   private readonly valuesById = new Map<string, string>();
 
-  constructor(field: string) {
-    this.definition = { field, type: "string" };
+  constructor(field: string, unique = false) {
+    this.definition = { field, type: "string", unique };
   }
 
   add(document: DocumentRecord, candidate: IndexCandidate): void {
@@ -53,6 +53,38 @@ export class StringIndex implements QueryIndex {
   clearContents(): void {
     this.values.clear();
     this.valuesById.clear();
+  }
+
+  findOwner(document: DocumentRecord, excludeId?: string): string | undefined {
+    const value = document[this.definition.field];
+
+    if (typeof value !== "string") {
+      return undefined;
+    }
+
+    const candidates = this.values.get(value);
+
+    if (!candidates) {
+      return undefined;
+    }
+
+    for (const id of candidates.keys()) {
+      if (id !== excludeId) {
+        return id;
+      }
+    }
+
+    return undefined;
+  }
+
+  findDuplicate(): string[] | undefined {
+    for (const candidates of this.values.values()) {
+      if (candidates.size > 1) {
+        return Array.from(candidates.keys());
+      }
+    }
+
+    return undefined;
   }
 
   scan(predicate: FieldPredicate): IndexCandidate[] | null {

@@ -4,7 +4,8 @@ import type { IndexCandidate, PrimaryIndex } from "./types.js";
 export class InMemoryPrimaryIndex implements PrimaryIndex {
   readonly definition = {
     field: "_id",
-    type: "$id"
+    type: "$id",
+    unique: true
   } as const;
 
   private readonly candidatesById = new Map<string, IndexCandidate>();
@@ -24,6 +25,20 @@ export class InMemoryPrimaryIndex implements PrimaryIndex {
 
   update(_document: DocumentRecord, candidate: IndexCandidate): void {
     this.set(candidate.id, candidate.offset);
+  }
+
+  /**
+   * `_id` uniqueness is already enforced at document-id assignment time (see
+   * `PocketCollection.createDocumentId`), so the primary index never needs to
+   * be consulted as a `unique`-style constraint check. These exist only to
+   * satisfy the {@link QueryIndex} interface.
+   */
+  findOwner(): string | undefined {
+    return undefined;
+  }
+
+  findDuplicate(): string[] | undefined {
+    return undefined;
   }
 
   scan(predicate: FieldPredicate): IndexCandidate[] | null {

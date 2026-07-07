@@ -22,7 +22,9 @@ writes do not affect it.
 ## Secondary Indexes
 
 Secondary indexes are created explicitly with `collection.createIndex(field,
-{ type })`. Two types are supported.
+{ type, unique? })`. Two types are supported. `unique` (default `false`) turns
+the index into a uniqueness constraint — see [Unique Indexes](#unique-indexes)
+below.
 
 ### StringIndex
 
@@ -75,6 +77,57 @@ silently ignored.
 Range queries use `sortedValues` to identify the matching value buckets, then
 collect all candidates from those buckets.
 
+## Unique Indexes
+
+`collection.createIndex(field, { type, unique: true })` adds a uniqueness
+constraint on top of an ordinary `StringIndex`/`NumberIndex`: at most one
+document may hold any given value for that field. Only `StringIndex` and
+`NumberIndex` support `unique`; the primary index (`_id`) is implicitly unique
+already and does not go through this mechanism.
+
+**Check-before-append.** Storage is append-only — once a `put1` record is
+written it cannot be rolled back — so every write path validates uniqueness
+against the *document it is about to store*, before calling
+`appendOperation`:
+
+- `insertOne` / `replaceOne` / `updateOne` call `IndexManager.assertUnique(document,
+  excludeId?)`, which asks each `unique` index for the id currently holding the
+  same value (`QueryIndex.findOwner`) and throws if it belongs to a different
+  document. `excludeId` is the document's own id for `replaceOne`/`updateOne`,
+  so a document may keep its own existing value without tripping the check
+  against itself.
+- `insertMany` / `updateMany` call `IndexManager.assertUniqueBatch(entries)`
+  instead. Beyond checking each entry against the already-stored index
+  contents, it also tracks values seen earlier in the same batch, because two
+  documents inserted or updated together are invisible to each other until the
+  whole batch is applied. A conflict anywhere in the batch rejects the entire
+  call — nothing is written (both are wrapped in `txnb`/`txnc` and the
+  in-memory index update never runs).
+
+**Type participation.** A value only participates in the uniqueness check if
+it matches the index's own type — exactly the same rule `add()` uses to decide
+whether to index a value at all (`StringIndex` only cares about `string`
+values, `NumberIndex` only about finite numbers). A missing field, or a field
+holding a value of a different type, never conflicts, mirroring "indexes
+narrow, unique constraints only see what would otherwise be indexed."
+
+**Creating a unique index over existing data.** `createIndex(field, { type,
+unique: true })` populates the index from the current documents exactly like a
+non-unique index, then scans the freshly built index for any value mapped to
+more than one document (`QueryIndex.findDuplicate`). If a conflict is found,
+the index is removed again (nothing is persisted) and the call throws —
+`existsIndex(field)` remains `false` and no `idx1` record is written. Creating
+a unique index is otherwise the same O(N) operation as any other `createIndex`
+call.
+
+Once an index exists as `unique`, every subsequent write is checked, so it can
+never drift back into conflict — the duplicate scan above only matters for the
+very first population of a **new** index.
+
+**Recreating with a different flag.** Calling `createIndex` again for a field
+that already has an index, but with a different `unique` value than the
+existing index, throws (same as passing a different `type`).
+
 ## IndexManager
 
 `IndexManager` orchestrates all secondary indexes for one collection. Its
@@ -85,6 +138,9 @@ responsibilities are:
   (`updateDocument`, `removeDocument`).
 - **Plan** queries by selecting the most selective index (`plan`).
 - **Clear** index contents for compaction refresh (`clearAllIndexContents`).
+- **Enforce** `unique` constraints on the write path (`assertUnique`,
+  `assertUniqueBatch`) and at index-creation time (`findDuplicate`) — see
+  [Unique Indexes](#unique-indexes).
 
 ## Query Planner
 
@@ -138,10 +194,10 @@ conservative superset of matching documents, never an exact set.
 
 ## Secondary Index Persistence
 
-Secondary index **definitions** (field name and type) are persisted in the log
-via `idx1` records. Secondary index **contents** (the actual value-to-document
-mappings) are not persisted. They are rebuilt from the `put1` records in the log
-at every open.
+Secondary index **definitions** (field name, type, and the `unique` flag) are
+persisted in the log via `idx1` records. Secondary index **contents** (the
+actual value-to-document mappings) are not persisted. They are rebuilt from the
+`put1` records in the log at every open.
 
 Consequence: startup time grows with the number of live documents when secondary
 indexes exist. For a collection with N documents and K secondary indexes, startup
@@ -154,15 +210,19 @@ Persisted index snapshots that eliminate the rebuild cost are planned for V2.
 
 ### Creation
 
-`collection.createIndex(field, { type })` writes an `idx1` record and then
-immediately rebuilds the new index contents from the current primary index.
-Creating an index on a collection with many existing documents is therefore an
-O(N) disk read operation at call time.
+`collection.createIndex(field, { type, unique? })` writes an `idx1` record and
+then immediately rebuilds the new index contents from the current primary
+index. Creating an index on a collection with many existing documents is
+therefore an O(N) disk read operation at call time. When `unique: true`, the
+freshly built index is also scanned for conflicts (see [Unique
+Indexes](#unique-indexes)); a conflict undoes the in-memory creation and
+throws before anything is appended to the log.
 
-If `createIndex` is called again for the same field and type, no new `idx1`
-record is written; the existing in-memory index is returned.
+If `createIndex` is called again for the same field, type, and `unique` flag,
+no new `idx1` record is written; the existing in-memory index is returned.
 
-If `createIndex` is called for the same field with a different type, it throws.
+If `createIndex` is called for the same field with a different type or a
+different `unique` flag, it throws.
 
 ### Removal
 

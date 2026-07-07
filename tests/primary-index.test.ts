@@ -11,7 +11,8 @@ describe("PrimaryIndex", () => {
 
     assert.deepEqual(index.definition, {
       field: "_id",
-      type: "$id"
+      type: "$id",
+      unique: true
     });
     assert.equal(index.has("00112233445566778899aabb"), true);
     assert.deepEqual(index.get("00112233445566778899aabb"), {

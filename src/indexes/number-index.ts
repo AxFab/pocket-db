@@ -7,8 +7,8 @@ export class NumberIndex implements QueryIndex {
   private readonly valuesById = new Map<string, number>();
   private sortedValues: number[] = [];
 
-  constructor(field: string) {
-    this.definition = { field, type: "number" };
+  constructor(field: string, unique = false) {
+    this.definition = { field, type: "number", unique };
   }
 
   add(document: DocumentRecord, candidate: IndexCandidate): void {
@@ -57,6 +57,38 @@ export class NumberIndex implements QueryIndex {
     this.values.clear();
     this.valuesById.clear();
     this.sortedValues = [];
+  }
+
+  findOwner(document: DocumentRecord, excludeId?: string): string | undefined {
+    const value = document[this.definition.field];
+
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return undefined;
+    }
+
+    const candidates = this.values.get(value);
+
+    if (!candidates) {
+      return undefined;
+    }
+
+    for (const id of candidates.keys()) {
+      if (id !== excludeId) {
+        return id;
+      }
+    }
+
+    return undefined;
+  }
+
+  findDuplicate(): string[] | undefined {
+    for (const candidates of this.values.values()) {
+      if (candidates.size > 1) {
+        return Array.from(candidates.keys());
+      }
+    }
+
+    return undefined;
   }
 
   scan(predicate: FieldPredicate): IndexCandidate[] | null {

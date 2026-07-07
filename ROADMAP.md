@@ -28,7 +28,7 @@
 
 - durability mode strict/relaxed ; OK
 - automatic compaction ;
-- uniq index ;
+- uniq index ; OK
 - query planner improvment ;
 - persisted index ;
 - reading snapshots ;

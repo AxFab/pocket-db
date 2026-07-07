@@ -127,6 +127,8 @@ export interface IndexInfo {
   name: string;
   /** Index type: `"string"` or `"number"`. */
   type: string;
+  /** Whether the index rejects writes that would duplicate an existing value. */
+  unique: boolean;
 }
 
 export interface Collection {
@@ -286,12 +288,25 @@ export interface DeleteManyResult {
 
 export interface CreateIndexOptions {
   type: SecondaryIndexType;
+  /**
+   * When `true`, the index rejects any insert, replace, or update that would
+   * give two documents the same value for this field. Checked on every write
+   * before it is appended to the log (writes cannot be rolled back after the
+   * fact). Defaults to `false`.
+   *
+   * Only fields matching the index's own type participate in the constraint —
+   * exactly the values the index would otherwise store (see {@link
+   * CreateIndexOptions.type}). A missing field or a field of a different type
+   * never conflicts.
+   */
+  unique?: boolean;
 }
 
 export interface CreateIndexResult {
   acknowledged: true;
   field: string;
   type: SecondaryIndexType;
+  unique: boolean;
 }
 
 export interface DropResult {

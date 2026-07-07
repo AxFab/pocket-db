@@ -83,10 +83,11 @@ export class PocketCollection implements Collection {
     return this.indexManager.definitions;
   }
 
-  getIndexes(): { name: string; type: string }[] {
+  getIndexes(): { name: string; type: string; unique: boolean }[] {
     return this.indexManager.definitions.map((def) => ({
       name: def.field,
-      type: def.type
+      type: def.type,
+      unique: def.unique
     }));
   }
 
@@ -157,6 +158,8 @@ export class PocketCollection implements Collection {
       _id: insertedId
     };
 
+    this.indexManager.assertUnique(documentToStore as DocumentRecord);
+
     const offset = this.appendPutDocument(documentId, documentToStore);
 
     this.applyPutDocument(insertedId, offset, documentToStore);
@@ -171,6 +174,9 @@ export class PocketCollection implements Collection {
     this.assertNotDropped();
     const preparedDocuments = documents.map((document) => this.prepareInsertedDocument(document));
     assertUniqueBatchIds(preparedDocuments.map((document) => document.id));
+    this.indexManager.assertUniqueBatch(
+      preparedDocuments.map((document) => ({ id: document.id, document: document.document as DocumentRecord }))
+    );
 
     if (preparedDocuments.length === 0) {
       return {
@@ -228,6 +234,9 @@ export class PocketCollection implements Collection {
       ...document,
       _id: id
     };
+
+    this.indexManager.assertUnique(documentToStore as DocumentRecord, id);
+
     const offset = this.appendPutDocument(documentId, documentToStore);
 
     this.applyPutDocument(id, offset, documentToStore);
@@ -300,6 +309,10 @@ export class PocketCollection implements Collection {
         modifiedCount: 0
       };
     }
+
+    this.indexManager.assertUniqueBatch(
+      updates.map((entry) => ({ id: entry.id, document: entry.document as DocumentRecord }))
+    );
 
     const offsets: number[] = [];
 
@@ -445,8 +458,9 @@ export class PocketCollection implements Collection {
 
   createIndex(field: string, options: CreateIndexOptions): CreateIndexResult {
     this.assertNotDropped();
+    const unique = options.unique ?? false;
     const alreadyExists = this.indexes.some((index) => index.field === field && index.type === options.type);
-    const definition = this.createIndexInMemory(field, options.type);
+    const definition = this.createIndexInMemory(field, options.type, unique);
 
     if (!alreadyExists) {
       this.storage.appendOperation(
@@ -454,7 +468,8 @@ export class PocketCollection implements Collection {
         encodeCreateIndexPayload({
           collectionId: this.id,
           field: definition.field,
-          type: definition.type
+          type: definition.type,
+          unique: definition.unique
         })
       );
     }
@@ -462,7 +477,8 @@ export class PocketCollection implements Collection {
     return {
       acknowledged: true,
       field: definition.field,
-      type: definition.type
+      type: definition.type,
+      unique: definition.unique
     };
   }
 
@@ -484,8 +500,8 @@ export class PocketCollection implements Collection {
     this.cache?.invalidate(id);
   }
 
-  createIndexFromReplay(field: string, type: SecondaryIndexType): void {
-    this.createIndexInMemory(field, type);
+  createIndexFromReplay(field: string, type: SecondaryIndexType, unique: boolean): void {
+    this.createIndexInMemory(field, type, unique);
   }
 
   dropFromReplay(): void {
@@ -602,6 +618,9 @@ export class PocketCollection implements Collection {
     assertUpdateDoesNotMutateId(update);
 
     const updatedDocument = this.buildUpdatedDocument(document, update);
+
+    this.indexManager.assertUnique(updatedDocument as DocumentRecord, document._id);
+
     const offset = this.appendPutDocument(objectIdFromHex(document._id), updatedDocument);
 
     this.applyPutDocument(document._id, offset, updatedDocument);
@@ -637,10 +656,27 @@ export class PocketCollection implements Collection {
     this.cache?.set(id, offset, document);
   }
 
-  private createIndexInMemory(field: string, type: SecondaryIndexType): SecondaryIndexDefinition {
+  private createIndexInMemory(field: string, type: SecondaryIndexType, unique: boolean): SecondaryIndexDefinition {
     assertIndexField(field);
-    const definition = this.indexManager.createIndex(field, type);
+    const isNewIndex = !this.indexManager.hasIndex(field);
+    const definition = this.indexManager.createIndex(field, type, unique);
     this.rebuildIndex(definition);
+
+    // Only a brand-new unique index can contain pre-existing duplicates — once
+    // created, every subsequent write is checked by assertUnique/assertUniqueBatch,
+    // so an index that already existed can never have drifted into conflict.
+    if (isNewIndex && unique) {
+      const duplicateIds = this.indexManager.findDuplicate(field);
+
+      if (duplicateIds) {
+        this.indexManager.removeIndex(field);
+        throw new Error(
+          `Cannot create unique index on "${field}": documents ${duplicateIds.map((id) => `"${id}"`).join(", ")} ` +
+          "share the same value."
+        );
+      }
+    }
+
     return definition;
   }
 

@@ -282,7 +282,7 @@ describe("compact — secondary indexes", () => {
 
     const reopened = pocketDb({ path });
     const col = reopened.collection("users");
-    assert.deepEqual(col.indexes, [{ field: "role", type: "string" }]);
+    assert.deepEqual(col.indexes, [{ field: "role", type: "string", unique: false }]);
     const admins = col.find({ role: "admin" }).toArray().map((d) => d.name);
     assert.deepEqual(admins, ["Ada"]);
     reopened.close();
@@ -318,7 +318,7 @@ describe("compact — collection and index drop", () => {
 
     const reopened = pocketDb({ path });
     const col = reopened.collection("users");
-    assert.deepEqual(col.indexes, [{ field: "age", type: "number" }]);
+    assert.deepEqual(col.indexes, [{ field: "age", type: "number", unique: false }]);
     reopened.close();
   });
 

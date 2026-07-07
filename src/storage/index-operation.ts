@@ -8,6 +8,8 @@ export interface CreateIndexOperation {
   collectionId: Buffer;
   field: string;
   type: StoredIndexType;
+  /** Whether this index rejects writes that would duplicate an existing value. */
+  unique: boolean;
 }
 
 const INDEX_TYPE_BYTES: Record<StoredIndexType, number> = {
@@ -25,13 +27,23 @@ export function encodeCreateIndexPayload(operation: CreateIndexOperation): Buffe
 
   const fieldBytes = Buffer.from(operation.field, "utf8");
   const encodedFieldLength = encodeU29(fieldBytes.byteLength);
-  const unalignedLength = operation.collectionId.byteLength + 1 + encodedFieldLength.byteLength + fieldBytes.byteLength;
+  const unalignedLength =
+    operation.collectionId.byteLength + 1 /* type */ + 1 /* unique */ + encodedFieldLength.byteLength + fieldBytes.byteLength;
   const payload = Buffer.alloc(alignTo4Bytes(unalignedLength));
 
+  let offset = operation.collectionId.byteLength;
   operation.collectionId.copy(payload, 0);
-  payload.writeUInt8(INDEX_TYPE_BYTES[operation.type], operation.collectionId.byteLength);
-  encodedFieldLength.copy(payload, operation.collectionId.byteLength + 1);
-  fieldBytes.copy(payload, operation.collectionId.byteLength + 1 + encodedFieldLength.byteLength);
+
+  payload.writeUInt8(INDEX_TYPE_BYTES[operation.type], offset);
+  offset += 1;
+
+  payload.writeUInt8(operation.unique ? 1 : 0, offset);
+  offset += 1;
+
+  encodedFieldLength.copy(payload, offset);
+  offset += encodedFieldLength.byteLength;
+
+  fieldBytes.copy(payload, offset);
 
   return payload;
 }
@@ -90,8 +102,14 @@ export function decodeCreateIndexPayload(payload: Buffer): CreateIndexOperation 
     throw new Error("Invalid create index operation: unknown index type.");
   }
 
-  const encodedField = decodeU29(payload, 5);
-  const fieldStart = 5 + encodedField.bytesRead;
+  const uniqueByte = payload.readUInt8(5);
+
+  if (uniqueByte !== 0 && uniqueByte !== 1) {
+    throw new Error("Invalid create index operation: unique flag must be 0 or 1.");
+  }
+
+  const encodedField = decodeU29(payload, 6);
+  const fieldStart = 6 + encodedField.bytesRead;
   const fieldEnd = fieldStart + encodedField.value;
 
   if (fieldEnd > payload.byteLength) {
@@ -107,6 +125,7 @@ export function decodeCreateIndexPayload(payload: Buffer): CreateIndexOperation 
   return {
     collectionId,
     type,
+    unique: uniqueByte === 1,
     field: payload.subarray(fieldStart, fieldEnd).toString("utf8")
   };
 }

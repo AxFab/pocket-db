@@ -300,7 +300,7 @@ export class PocketDatabase implements Database {
         throw new Error("Invalid create index operation: unknown collection identifier.");
       }
 
-      collection.createIndexFromReplay(indexOperation.field, indexOperation.type);
+      collection.createIndexFromReplay(indexOperation.field, indexOperation.type, indexOperation.unique);
       return;
     }
 

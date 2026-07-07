@@ -99,6 +99,7 @@ the dropped collection.
 ```text
 4 bytes   collection id
 1 byte    index type (1 = string, 2 = number)
+1 byte    unique flag (0 = false, 1 = true)
 U29       field name byte length
 N bytes   field name, UTF-8
 padding   zero bytes until payload is aligned to 4 bytes
@@ -106,8 +107,14 @@ padding   zero bytes until payload is aligned to 4 bytes
 
 Index definitions are persisted in the log. Index contents are rebuilt in
 memory when the database opens. A `idx1` record is written once per
-`createIndex()` call; calling `createIndex()` again for the same field and type
-is a no-op at the log level.
+`createIndex()` call; calling `createIndex()` again for the same field, type,
+and `unique` flag is a no-op at the log level.
+
+The `unique` flag marks the index as a uniqueness constraint: every write is
+checked against it (see [indexes.md](indexes.md#unique-indexes)) before its
+`put1` record is appended. This is a V1.1 addition to the `idx1` payload —
+files written before it lack the byte entirely, so the format is not backward
+compatible with pre-unique-index database files.
 
 ### `dix1` — Drop Index
 

@@ -187,9 +187,9 @@ collection.replaceOne(doc & { _id }): ReplaceOneResult
 collection.deleteOne(id | query): DeleteOneResult
 collection.deleteMany(query?): DeleteManyResult
 
-collection.createIndex(field, { type: "string" | "number" }): CreateIndexResult
+collection.createIndex(field, { type: "string" | "number", unique?: boolean }): CreateIndexResult
 collection.dropIndex(field): DropIndexResult
-collection.getIndexes(): { name: string; type: string }[]
+collection.getIndexes(): { name: string; type: string; unique: boolean }[]
 collection.existsIndex(name: string): boolean
 collection.drop(): DropResult
 
@@ -297,11 +297,16 @@ Secondary indexes speed up equality and range queries. They are rebuilt from the
 users.createIndex("role", { type: "string" });
 users.createIndex("age",  { type: "number" });
 
+// Unique: rejects any write that would duplicate an existing value
+users.createIndex("email", { type: "string", unique: true });
+
 // Drop
 users.dropIndex("role");
 ```
 
 `StringIndex` supports `$eq` and `$in` lookups. `NumberIndex` additionally supports `$gt`, `$gte`, `$lt`, `$lte` range scans. The query planner automatically picks the most selective available index for each query.
+
+`unique: true` (default `false`) turns an index into a uniqueness constraint, checked on every `insertOne`/`insertMany`/`replaceOne`/`updateOne`/`updateMany` before the write is committed. Only values matching the index's own type participate — a missing field or a value of a different type never conflicts. Creating a unique index over a collection that already has conflicting values throws and leaves the collection unchanged. See [docs/indexes.md](docs/indexes.md#unique-indexes) for details.
 
 ---
 
