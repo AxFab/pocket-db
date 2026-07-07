@@ -35,6 +35,7 @@ export class SqliteAdapter implements Adapter {
   private stmtDelete!: Statement;
   private stmtCount!: Statement;
   private stmtSortByScore!: Statement;
+  private stmtDistinctRole!: Statement;
 
   constructor (mode:string) {
     mode = mode ?? 'file'
@@ -116,6 +117,11 @@ export class SqliteAdapter implements Adapter {
     return (this.stmtSortByScore.all() as { data: string }[]).map((r) => JSON.parse(r.data) as StoredDocument);
   }
 
+  // Uses the idx_role index to satisfy DISTINCT via an index scan.
+  distinctRole(): string[] {
+    return (this.stmtDistinctRole.all() as { role: string }[]).map((r) => r.role);
+  }
+
   private createSchema(): void {
     // SQLite has no built-in REGEXP implementation; register a JS function so
     // `expr REGEXP pattern` works. Compiled RegExp objects are cached per
@@ -166,6 +172,8 @@ export class SqliteAdapter implements Adapter {
     this.stmtCount       = this.db!.prepare("SELECT COUNT(*) AS n FROM documents");
     // Uses the idx_score B-tree index for an efficient sorted scan.
     this.stmtSortByScore = this.db!.prepare("SELECT data FROM documents ORDER BY score DESC");
+    // Uses the idx_role index — SQLite can satisfy DISTINCT via an index scan.
+    this.stmtDistinctRole = this.db!.prepare("SELECT DISTINCT role FROM documents WHERE role IS NOT NULL");
   }
 
   private bulkInsert(docs: BenchDocument[]): string[] {

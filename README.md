@@ -177,6 +177,7 @@ collection.insertMany(docs): InsertManyResult
 collection.findOne(query?): Record | null
 collection.find(query?): Cursor
 collection.countDocuments(query?): number
+collection.distinct(field, query?, options?: { limit?: number }): unknown[]
 
 collection.updateOne(id | query, update): UpdateResult
 collection.updateMany(query, update): UpdateResult

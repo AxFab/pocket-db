@@ -205,6 +205,23 @@ export interface Collection {
    */
   countDocuments(query?: Record<string, unknown>): number;
 
+  /**
+   * Returns the distinct values held by `field` across documents matching
+   * `query` (default: all documents).
+   *
+   * Values are compared by deep equality — the same rule `$eq`/`$in` use:
+   * strict equality for primitives, JSON-structural equality for arrays and
+   * objects. Two documents whose `field` holds the same array/object content
+   * contribute one distinct value; different content contributes separate
+   * values. Documents where `field` is missing do not contribute a value.
+   *
+   * Throws once the number of distinct values would exceed `options.limit`
+   * (default `100`) — a safety guard against unbounded memory growth on a
+   * high-cardinality field. Pass a higher `limit` when more distinct values
+   * are legitimately expected.
+   */
+  distinct(field: string, query?: Record<string, unknown>, options?: DistinctOptions): unknown[];
+
   deleteOne(id: string): DeleteOneResult;
 
   deleteOne(query: Record<string, unknown>): DeleteOneResult;
@@ -307,6 +324,15 @@ export interface CreateIndexResult {
   field: string;
   type: SecondaryIndexType;
   unique: boolean;
+}
+
+export interface DistinctOptions {
+  /**
+   * Maximum number of distinct values `distinct()` will collect before
+   * throwing. Guards against unbounded memory growth when the field turns
+   * out to be high-cardinality. Defaults to `100`.
+   */
+  limit?: number;
 }
 
 export interface DropResult {

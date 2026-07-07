@@ -30,8 +30,15 @@ Current values:
 | magic | `pocketdb` |
 | format major | `0` |
 | format minor | `1` |
-| serialization format | `j` (0x6a) |
+| serialization format | `j` (0x6a) JSON — default, or `b` (0x62) BSON, or `a` (0x61) AMF3 |
 | serialization version | `0` |
+
+The format is chosen via the `serialization` option on `pocketDb()` when a
+**new** file is created; it is read from the header (not re-selectable) when
+opening an existing file. Whichever format is recorded, every `put1` payload
+in the file is a document encoded in that format — see the encoders under
+`src/storage/encoding/` for the BSON/AMF3 wire layouts, which are not detailed
+byte-by-byte in this document (only the JSON case is below in "Put Document").
 
 Operation records start at byte offset 12 (immediately after the file header).
 

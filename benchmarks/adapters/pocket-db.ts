@@ -107,4 +107,8 @@ export class PocketDbAdapter implements Adapter {
   sortByScore(): StoredDocument[] {
     return this.col!.find({}).sort({ score: -1 }).toArray() as unknown as StoredDocument[];
   }
+
+  distinctRole(): string[] {
+    return this.col!.distinct("role") as string[];
+  }
 }

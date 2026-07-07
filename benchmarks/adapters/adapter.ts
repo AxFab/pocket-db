@@ -75,4 +75,12 @@ export interface Adapter {
    * Measures full-collection sort performance.
    */
   sortByScore(): StoredDocument[];
+
+  /**
+   * Return the distinct values held by the `role` field (3 possible values:
+   * "admin", "editor", "reader"). Measures distinct-value extraction:
+   * pocket-db's `distinct()`, SQL `SELECT DISTINCT`, or an equivalent
+   * scan-and-dedupe for adapters with no native support.
+   */
+  distinctRole(): string[];
 }

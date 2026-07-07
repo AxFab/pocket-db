@@ -107,6 +107,11 @@ export class JsonFileAdapter implements Adapter {
     return Array.from(this.data.values()).sort((a, b) => b.score - a.score);
   }
 
+  // No index, no native DISTINCT — full in-memory scan and dedupe.
+  distinctRole(): string[] {
+    return Array.from(new Set(Array.from(this.data.values()).map((doc) => doc.role)));
+  }
+
   private flush(): void {
     writeFileSync(this.filePath, JSON.stringify(Array.from(this.data.values())));
   }

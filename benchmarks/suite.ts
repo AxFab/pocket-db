@@ -166,5 +166,18 @@ export const CASES: BenchCase[] = [
     run(adapter) {
       adapter.sortByScore();
     }
+  },
+
+  {
+    // Distinct values of `role` (3 possible values). Compares pocket-db's
+    // distinct() — index-narrowed candidates + in-memory dedupe — against
+    // SQL DISTINCT (index scan) and the linear scan-and-dedupe used by the
+    // adapters with no native support.
+    name: "distinctByRole",
+    warmup: 100,
+    iterations: 1_000,
+    run(adapter) {
+      adapter.distinctRole();
+    }
   }
 ];

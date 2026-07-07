@@ -160,6 +160,11 @@ export class LokiJsAdapter implements Adapter {
     ).map(stripMeta);
   }
 
+  // No native DISTINCT — scan the binary-indexed `role` field and dedupe.
+  distinctRole(): string[] {
+    return Array.from(new Set((this.col!.find() as LokiDoc[]).map((doc) => doc.role)));
+  }
+
   // -------------------------------------------------------------------------
   // Synchronous persistence helpers
   // -------------------------------------------------------------------------

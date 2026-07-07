@@ -45,7 +45,7 @@
 
 ## additional
 
-- on Collection distinct(field, query) ;
+- on Collection distinct(field, query) ; OK
 - hideIndex(name)  getIndex() ;
 - stats() ; OK
 - binary serialization for faster parsing ; TRIED

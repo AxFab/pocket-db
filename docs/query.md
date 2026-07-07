@@ -20,26 +20,41 @@ Matches documents where `field === value`. Strict equality; no type coercion.
 collection.find({ age: { $eq: 30 } })
 ```
 
-### `$gt` / `$lt`
+### `$ne`
 
-Matches documents where the field value is strictly greater than / less than the
-given value.
+Matches documents where the field value does not strictly equal the given
+value (including documents where the field is missing, since `undefined`
+never equals the operand).
+
+```ts
+collection.find({ status: { $ne: "archived" } })
+```
+
+### `$gt` / `$gte` / `$lt` / `$lte`
+
+Matches documents where the field value is strictly greater than / greater
+than or equal to / strictly less than / less than or equal to the given value.
 
 ```ts
 collection.find({ age: { $gt: 18 } })
+collection.find({ age: { $gte: 18 } })
 collection.find({ score: { $lt: 100 } })
+collection.find({ score: { $lte: 100 } })
 collection.find({ age: { $gt: 18, $lt: 65 } })
 ```
 
 Only numeric comparisons are meaningful. Non-numeric fields are not indexed by
 `NumberIndex` and will not match.
 
-### `$in`
+### `$in` / `$nin`
 
-Matches documents where the field value equals any of the listed values.
+`$in` matches documents where the field value equals any of the listed
+values. `$nin` matches documents where the field value equals none of them
+(a missing field also satisfies `$nin`, since it can't equal any listed value).
 
 ```ts
 collection.find({ role: { $in: ["admin", "editor"] } })
+collection.find({ role: { $nin: ["banned", "suspended"] } })
 ```
 
 ### `$exists`
@@ -95,6 +110,20 @@ entries throw at compile time.
 
 `$type` is always evaluated in the residual pass; no index supports it.
 
+### `$not`
+
+Negates a field operator expression. Matches documents where the field does
+**not** satisfy every operator listed inside `$not` (so a missing field, which
+fails most operators, typically matches `$not`).
+
+```ts
+collection.find({ age: { $not: { $gt: 65 } } })
+collection.find({ tags: { $not: { $in: ["draft", "archived"] } } })
+```
+
+The value must be a non-null, non-array object with at least one `$`-operator
+key; `{}` and non-object values throw at compile time.
+
 ### `$and`
 
 Combines multiple sub-queries with logical AND. The result matches documents
@@ -113,6 +142,45 @@ Top-level fields in the same query object are already implicitly ANDed, so
 `$and` is only needed when multiple conditions target the same field or when
 explicit grouping is required.
 
+### `$or`
+
+Matches documents that satisfy at least one of the listed sub-queries. An
+empty `$or: []` array matches no documents.
+
+```ts
+collection.find({
+  $or: [
+    { role: "admin" },
+    { age: { $gte: 65 } }
+  ]
+})
+```
+
+Disjunctive queries (`$or`) are never answered by a secondary index — the
+query planner always falls back to a full collection scan for the branch
+containing `$or`, since narrowing by one index could miss documents matched
+only by another branch. Every candidate is still fully re-evaluated against
+the compiled query, so results are correct; only the candidate-narrowing
+optimization is unavailable. Index-assisted planning for `$or` is planned for
+a future version — see [indexes.md](indexes.md#query-planner).
+
+### `$nor`
+
+Matches documents that satisfy **none** of the listed sub-queries — the
+logical negation of `$or`. An empty `$nor: []` array matches every document.
+
+```ts
+collection.find({
+  $nor: [
+    { status: "banned" },
+    { status: "suspended" }
+  ]
+})
+```
+
+Like `$or`, `$nor` always falls back to a full collection scan (see above);
+the full query is still evaluated correctly against every document.
+
 Unsupported operators (e.g. `$where`, `$size`) throw at query
 compilation time.
 
@@ -122,11 +190,17 @@ compilation time.
 `CompiledQuery` nodes:
 
 ```
-CompiledQuery = AndPredicate | FieldPredicate
+CompiledQuery = AndPredicate | OrPredicate | NorPredicate | FieldPredicate
 
 AndPredicate   = { type: "and"; predicates: CompiledQuery[] }
+OrPredicate    = { type: "or"; predicates: CompiledQuery[] }
+NorPredicate   = { type: "nor"; predicates: CompiledQuery[] }
 FieldPredicate = { type: "field"; field: string; operators: FieldOperator[] }
 ```
+
+Top-level query fields are combined into a single `AndPredicate`; `$or` and
+`$nor` each compile to their own node wrapping their sub-queries (which are
+themselves fully compiled, so they can nest `$and`/`$or`/`$nor` arbitrarily).
 
 The compiled form is passed to the query planner and to the per-document
 evaluator. Compilation happens once per `find()` or `findOne()` call; cursor
@@ -160,6 +234,56 @@ non-negative integer. A limit of `0` returns no documents.
 Skips the first `count` matching documents before returning results. Must be a
 non-negative integer. Skipping is applied after query evaluation, not before
 disk reads.
+
+## Distinct Values
+
+`collection.distinct(field, query?, options?)` returns the distinct values
+held by `field` across documents matching `query` (default: all documents).
+
+```ts
+collection.distinct("role")
+// -> ["admin", "editor", "reader"]
+
+collection.distinct("role", { active: true })
+// -> only roles held by active documents
+```
+
+Values are compared by deep equality — the same rule `$eq`/`$in` use: strict
+equality for primitives, JSON-structural equality for arrays and objects. Two
+documents whose `field` holds the same array or object content contribute a
+single distinct value; different content contributes separate values.
+
+```ts
+collection.insertMany([
+  { tags: ["a", "b"] },
+  { tags: ["a", "b"] }, // same content — not a new distinct value
+  { tags: ["a", "c"] }  // different content — a new distinct value
+]);
+
+collection.distinct("tags")
+// -> [["a", "b"], ["a", "c"]]
+```
+
+Documents where `field` is missing do not contribute a value. `distinct`
+reuses `find(query)` internally, so a secondary index on `field` (or on a
+field used in `query`) narrows candidates exactly as it would for a normal
+query — see [indexes.md](indexes.md).
+
+### Distinct value limit
+
+`distinct` throws once the number of distinct values would exceed
+`options.limit` (default `100`) — a safety guard against unbounded memory
+growth when `field` turns out to be high-cardinality (e.g. a free-text field
+or a unique id used by mistake). Raise the limit explicitly when more values
+are legitimately expected:
+
+```ts
+collection.distinct("userId")               // throws past 100 distinct values
+collection.distinct("userId", {}, { limit: 5000 })
+```
+
+The check happens as values are collected — reading stops at the first value
+that would exceed the limit rather than reading the whole collection first.
 
 ## Update Operators
 

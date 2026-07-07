@@ -157,8 +157,13 @@ for ensuring no cursors are alive when compaction is called. A future version
 will track active cursors and either block compaction or keep old file regions
 mapped until all cursors are closed.
 
-**Single process.** Pocket DB currently uses no file locking. Compaction must
-not run while another process has the same file open for writing.
+**Single process.** Pocket DB's `.lock` file (see
+[storage.md](storage.md#concurrency)) prevents a second process from opening
+the same file while the first still holds it, so compaction never runs
+concurrently with another process's writes. Within one process all operations
+are synchronous, so `compact()` cannot itself race with another write — the
+remaining risk is the active-cursors limitation above, not cross-process
+concurrency.
 
 **No background compaction.** Compaction is a synchronous, blocking operation
 that holds the file open exclusively for the duration of the pass. Automatic

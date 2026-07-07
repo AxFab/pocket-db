@@ -119,6 +119,8 @@ Batch methods (`insertMany`, `updateMany`, `deleteMany`) wrap their individual r
 
 `countDocuments(query?)` delegates to `find(query).count()`.
 
+`distinct(field, query?, options?)` iterates `find(query)` via `cursor.next()` (no `toArray()` — reading stops as soon as the limit would be exceeded) and collects the distinct values of `field`, skipping documents where it is missing. Values are deduplicated with `valuesEqual` (same rule as `$eq`/`$in`: strict equality for primitives, `JSON.stringify` structural equality for arrays/objects), so distinct object/array values are preserved rather than collapsed to a single bucket. Throws once the result would exceed `options.limit` (default `DEFAULT_DISTINCT_LIMIT = 100`) — a high-cardinality guard, not a hard cap; callers can raise it.
+
 ### Cursor (`src/api/cursor.ts`)
 
 `find(query)` compiles the query, asks `IndexManager.plan()` for a candidate set, and returns a `PocketCursor`. The cursor captures a **snapshot** of `{ id, offset }` pairs at the moment `find()` is called. Subsequent writes do not affect open cursors (important invariant — tests explicitly verify this). Each `next()` call reads the document at its stored file offset and evaluates the residual query against it.
@@ -286,6 +288,7 @@ pocketDb("./data.pdb")
 - Secondary indexes: `StringIndex` (`$eq`, `$in`) and `NumberIndex` (`$eq`, `$in`, `$gt`, `$gte`, `$lt`, `$lte`)
 - Unique indexes: `createIndex(field, { type, unique: true })`, enforced on `insertOne`/`insertMany`/`replaceOne`/`updateOne`/`updateMany`
 - `count()` on cursor, `countDocuments()` on collection
+- `distinct(field, query?, options?)` on collection (deep-equality dedup, configurable value-count limit, default 100)
 - `sort()` on cursor (up to 4 fields, ascending/descending, stable missing-value semantics)
 - `skip()` and `limit()` on cursor
 - Manual compaction (`db.compact()`)
@@ -296,10 +299,11 @@ pocketDb("./data.pdb")
 - `Collection.getIndexes()` / `Collection.existsIndex(name)`
 - `Database.stats()` / `Collection.stats()` (size on disk, document/operation/tombstone counts, reclaimable bytes)
 - Optional hot-document cache: `Collection.enableCache()` / `disableCache()` / `cacheStats()` (off by default, id-keyed + offset-versioned LRU)
+- `durability: "strict" | "relaxed"` option in `OpenOptions` (fsync after every write vs. OS page cache)
 - Clean public API surface and TypeScript exports
 - Benchmarks vs. SQLite (in-memory and file-backed), JSON file, lowdb, and LokiJS, plus a cache vs. no-cache `pocket-db` comparison
 
-**V2 planned:** persisted index snapshots, automatic compaction, read snapshots, `durability: "strict" | "relaxed"` with fsync, streaming scan, improved query planner, `$or`/`$nor` index support.
+**V2 planned:** persisted index snapshots, automatic compaction, read snapshots, streaming scan, improved query planner, `$or`/`$nor` index support (the operators themselves are already fully supported for query evaluation — see Query Compilation above — only index-assisted planning for disjunctive queries is still a full-scan fallback).
 
 **V3 planned:** compound indexes, lightweight transactions, compression, optional native C engine.
 

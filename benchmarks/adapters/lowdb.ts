@@ -115,4 +115,9 @@ export class LowDbAdapter implements Adapter {
   sortByScore(): StoredDocument[] {
     return this.db!.data.docs.slice().sort((a, b) => b.score - a.score);
   }
+
+  // No index, no native DISTINCT — full linear scan and dedupe.
+  distinctRole(): string[] {
+    return Array.from(new Set(this.db!.data.docs.map((doc) => doc.role)));
+  }
 }

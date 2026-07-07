@@ -59,13 +59,18 @@ partial batch is invisible on the next open.
 
 ## Document Storage
 
-Documents are stored as `JSON.stringify` output, encoded as UTF-8. There is no
-partial-field encoding or delta compression: every `put1` record contains the
-full document, including the `_id` field. Updates produce a new `put1` record
-for the updated document; the previous version becomes a dead record.
+Documents are stored using one of three serialization formats, selected per
+file: JSON (`JSON.stringify` output, UTF-8), BSON (Binary JSON), or AMF3
+(Action Message Format 3). There is no partial-field encoding or delta
+compression regardless of format: every `put1` record contains the full
+document, including the `_id` field. Updates produce a new `put1` record for
+the updated document; the previous version becomes a dead record.
 
-The document serialization format is recorded in the file header (`j` for JSON,
-version `0`). All records in a file use the same format.
+The document serialization format is recorded in the file header (`j` = JSON,
+`b` = BSON, `a` = AMF3, currently all version `0`) and chosen via the
+`serialization` option on `pocketDb()` when a **new** file is created; opening
+an existing file always uses the format already recorded in its header. All
+records in a given file use the same format — formats are never mixed.
 
 ## Corruption Policy
 
@@ -86,19 +91,24 @@ Neither truncation recovery nor the corruption option are implemented yet.
 
 ## Durability
 
-The intended API should expose a durability option:
+`OpenOptions` exposes a `durability` option:
 
 ```ts
-pocketDb({ durability: "relaxed" | "strict" })
+pocketDb(path, { durability: "relaxed" | "strict" })
 ```
 
-- `relaxed`: write to the file descriptor without forcing an fsync after every
-  operation. Data may be lost if the OS crashes before flushing its buffers.
-- `strict`: force data to disk with `fsync` before acknowledging the write.
+- `relaxed` (default): write to the file descriptor without forcing an fsync
+  after every operation. Data may be lost if the OS crashes before flushing its
+  buffers.
+- `strict`: call `fsyncSync` after every `appendOperation`, guaranteeing the
+  kernel has flushed the record to durable storage before the call returns.
+  One extra syscall per write.
 
-The current implementation does not call `fsync` and should not claim full crash
-durability until this option is implemented. It does provide atomic replay
-semantics for batches: uncommitted records are ignored on reopen.
+`relaxed` does not call `fsync` and therefore should not be relied on for full
+crash durability against an OS-level crash (a process crash is unaffected
+either way, since already-written bytes are in the OS page cache). Both modes
+provide atomic replay semantics for batches: uncommitted `txnb`/`txnc` records
+are ignored on reopen regardless of durability mode.
 
 ## Compaction
 
@@ -129,9 +139,19 @@ query planner.
 
 Pocket DB is designed as a single-process embedded database.
 
-Multiple processes must not open and write to the same file simultaneously. No
-file locking is implemented yet. A lock file or platform-specific file locking
-is planned for V1 completion.
+`open()` acquires a `.lock` file next to the database (created with the
+exclusive `wx` flag, containing the writer's PID) before opening storage, and
+releases it in `close()` — including when `open()` itself fails partway
+through, so a bad open never leaves the file permanently locked. If the lock
+file already exists, Pocket DB reads the PID inside it and checks whether that
+process is still alive (`process.kill(pid, 0)`); a stale lock left behind by a
+crashed process is removed and acquisition retried (bounded to a few attempts
+before throwing). A live conflicting process causes `open()` to throw
+immediately, naming the holding PID.
+
+This prevents two processes from opening the same file concurrently, but
+Pocket DB still supports only one writer at a time — there is no multi-process
+write coordination beyond the exclusivity of the lock itself.
 
 Within one process, all writes are synchronous and serialised. There is no write
 queue or async I/O.

@@ -4,7 +4,7 @@ import {
   type SecondaryIndexDefinition,
   type SecondaryIndexType
 } from "../indexes/index.js";
-import { compileQuery, updateDocument, type DocumentRecord, type Query, type UpdateExpression } from "../search/index.js";
+import { compileQuery, updateDocument, valuesEqual, type DocumentRecord, type DocumentValue, type Query, type UpdateExpression } from "../search/index.js";
 import {
   CREATE_INDEX_OPERATION,
   DELETE_DOCUMENT_OPERATION,
@@ -30,6 +30,7 @@ import type {
   CreateIndexResult,
   DeleteManyResult,
   DeleteOneResult,
+  DistinctOptions,
   DropIndexResult,
   DropResult,
   InsertManyResult,
@@ -47,6 +48,14 @@ import type {
  * per-record readSync path is cheaper than a full file read.
  */
 const SCAN_PRELOAD_THRESHOLD = 2;
+
+/**
+ * Default cap on the number of distinct values `distinct()` will collect
+ * before throwing. Guards against unbounded memory growth when called on a
+ * field that turns out to be high-cardinality (e.g. a free-text field or a
+ * unique id by mistake). Override per call via `DistinctOptions.limit`.
+ */
+const DEFAULT_DISTINCT_LIMIT = 100;
 
 export class PocketCollection implements Collection {
   private readonly primaryIndex = new InMemoryPrimaryIndex();
@@ -367,6 +376,52 @@ export class PocketCollection implements Collection {
 
   countDocuments(query: Query = {}): number {
     return this.find(query).count();
+  }
+
+  /**
+   * Returns the distinct values held by `field` across documents matching
+   * `query` (default: all documents).
+   *
+   * Values are compared by deep equality — the same rule `$eq`/`$in` use
+   * ({@link valuesEqual}: strict equality for primitives, JSON-structural
+   * equality for arrays and objects) — so two documents with, say,
+   * `{ tags: ["a"] }` and `{ tags: ["a"] }` contribute one distinct value,
+   * while `{ tags: ["a"] }` and `{ tags: ["b"] }` contribute two. Documents
+   * where `field` is missing do not contribute a value.
+   *
+   * Stops reading further documents and throws as soon as the number of
+   * distinct values would exceed `options.limit` (default {@link
+   * DEFAULT_DISTINCT_LIMIT}) — a safety guard against unbounded memory growth
+   * when `field` turns out to be high-cardinality. Pass a higher `limit`
+   * explicitly when more distinct values are legitimately expected.
+   */
+  distinct(field: string, query: Query = {}, options?: DistinctOptions): unknown[] {
+    this.assertNotDropped();
+    const limit = options?.limit ?? DEFAULT_DISTINCT_LIMIT;
+    assertPositiveIntegerLimit(limit);
+
+    const cursor = this.find(query);
+    const values: DocumentValue[] = [];
+
+    for (let document = cursor.next(); document !== null; document = cursor.next()) {
+      if (!Object.hasOwn(document, field)) {
+        continue;
+      }
+
+      const value = document[field] as DocumentValue;
+
+      if (values.some((existing) => valuesEqual(existing, value))) {
+        continue;
+      }
+
+      if (values.length >= limit) {
+        throw new Error(`Too many distinct values for field "${field}" (limit: ${limit}).`);
+      }
+
+      values.push(value);
+    }
+
+    return values;
   }
 
   deleteOne(id: string): DeleteOneResult;
@@ -743,5 +798,11 @@ function isEmptyUpdate(update: UpdateExpression): boolean {
 function assertIndexField(field: string): void {
   if (field.length === 0) {
     throw new Error("Index field cannot be empty.");
+  }
+}
+
+function assertPositiveIntegerLimit(limit: number): void {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error("distinct() limit must be a positive integer.");
   }
 }

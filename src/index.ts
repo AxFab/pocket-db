@@ -9,6 +9,7 @@ export type {
   DatabaseStats,
   DeleteManyResult,
   DeleteOneResult,
+  DistinctOptions,
   DropIndexResult,
   DropResult,
   IndexInfo,

@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.4] — 2026-07-07
+
+### Added
+
+- **Unique indexes** — `createIndex(field, { type, unique: true })` (default `unique: false`)
+  turns a secondary index into a uniqueness constraint. Enforced on `insertOne`,
+  `insertMany`, `replaceOne`, `updateOne`, and `updateMany`, checked *before* the operation
+  is appended to the log (writes are append-only and cannot be rolled back). Sibling
+  documents within the same `insertMany`/`updateMany` batch are checked against each other
+  as well as against the collection. In-place writes may keep their own existing value.
+  Only values matching the index's own type participate — a missing field or a
+  differently-typed value never conflicts. Creating a `unique` index over a collection
+  that already contains duplicates detects the conflict, leaves nothing persisted, and
+  throws. The constraint is itself persisted in the `idx1` log record and survives reopen
+  and `compact()`. `IndexInfo` and `CreateIndexResult` now report `unique: boolean`. See
+  [docs/indexes.md](docs/indexes.md).
+- **`Collection.distinct(field, query?, options?)`** — returns the distinct values held by
+  `field` across documents matching `query` (default: all documents). Values are compared
+  by deep equality (the same rule `$eq`/`$in` use: strict equality for primitives,
+  JSON-structural equality for arrays/objects), so distinct array/object contents are
+  preserved rather than collapsed into a single bucket. Documents missing `field` don't
+  contribute a value. Internally reuses `find(query)`, so an index on `field` (or on the
+  query) narrows candidates as usual. Throws once the result would exceed
+  `options.limit` (default `100`) — reading stops as soon as the limit would be exceeded,
+  rather than scanning the whole collection first. New `DistinctOptions` type exported from
+  the package root. See [docs/query.md](docs/query.md#distinct-values).
+
+### Fixed
+
+- **Lock leak on failed `open()`** — if `FileStorage.open()` threw after the `.lock` file
+  was acquired (e.g. an unreadable or corrupt database file), the lock was never released,
+  permanently blocking future opens of that file until the `.lock` was removed by hand.
+  `open()` now releases the lock on any error during initialization before rethrowing.
+- **Stale-lock acquisition could recurse without bound** — `FileLock` retried acquisition
+  by recursive call after clearing a stale lock; a lock file that kept reappearing (or
+  couldn't be removed) could recurse indefinitely. Acquisition is now a bounded loop (3
+  attempts) that raises a clear error instead of overflowing the stack.
+
+### Tooling
+
+- Repository cleanup: tightened `.gitignore`/`.npmignore`, dependency and lint config
+  updates, `benchmarks/package.json` housekeeping.
+- Benchmark suite extended with a `distinctByRole` case (3-value `role` field) and
+  `Adapter.distinctRole()` implemented across all five adapters — pocket-db's `distinct()`,
+  SQLite `SELECT DISTINCT` (index scan via `idx_role`), and a linear scan-and-dedupe for
+  lowdb, LokiJS, and the JSON-file adapter.
+
+### Documentation
+
+- Corrected `CLAUDE.md`'s development-status notes: `durability: "strict" | "relaxed"` is
+  implemented (moved out of the "planned" list into "V1 complete"), and clarified that
+  `$or`/`$nor` query evaluation is already fully supported — only *index-assisted planning*
+  for disjunctive queries remains a full-scan fallback and is still planned for V2.
+- Fixed stale claims in `docs/storage.md` and `docs/compact.md` that file locking and the
+  `durability` option were not implemented — both have shipped since `0.1.1`/`0.1.2`.
+  `docs/storage.md` now also documents the BSON/AMF3 serialization formats (previously
+  described as JSON-only).
+- `docs/query.md` was missing `$ne`, `$gte`, `$lte`, `$nin`, `$not`, `$or`, and `$nor`
+  entirely, and its `CompiledQuery` type omitted `OrPredicate`/`NorPredicate`. All seven
+  operators are now documented, and the type definition matches `src/search/types.ts`.
+
+---
+
 ## [0.1.3] — 2026-06-16
 
 ### Added
