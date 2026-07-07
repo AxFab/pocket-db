@@ -72,5 +72,11 @@ export interface PrimaryIndex extends QueryIndex {
 export interface QueryPlan {
   candidates: IndexCandidate[];
   residualQuery: CompiledQuery;
-  usedIndex?: IndexDefinition;
+  /**
+   * Every index that contributed to `candidates`, one per indexable field
+   * predicate (their scan results were intersected by id). Empty when no
+   * predicate could be answered by an index, i.e. `candidates` is the full
+   * primary index snapshot.
+   */
+  usedIndexes: IndexDefinition[];
 }

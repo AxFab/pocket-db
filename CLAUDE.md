@@ -137,7 +137,9 @@ Batch methods (`insertMany`, `updateMany`, `deleteMany`) wrap their individual r
 
 ### Query Planning (`src/indexes/index-manager.ts` — `plan`)
 
-`IndexManager.plan(compiledQuery, primaryIndex)` extracts all `FieldPredicate` nodes from the compiled query tree and checks whether any registered index can answer them. If an index returns candidates, the planner picks the index with the fewest candidates (smallest result set). The full query is always re-evaluated against each candidate document as a residual filter.
+`IndexManager.plan(compiledQuery, primaryIndex)` extracts all `FieldPredicate` nodes from the compiled query tree (`fieldPredicates()`) and resolves **every** indexable one independently, then intersects their candidate sets by id (`intersectCandidates`), instead of picking only the single smallest result. A predicate with no matching index contributes nothing to the intersection and is left entirely to the residual filter. If more than one index can answer the *same* predicate, the smallest of those is kept (same tie-break as before). If no predicate is indexable at all, the plan falls back to `primaryIndex.snapshot()` (full scan). `intersectCandidates` sorts lists smallest-first and short-circuits once the running intersection is empty. `QueryPlan.usedIndexes` lists every index that contributed (`[]` for a full scan). The full query is always re-evaluated against each candidate document as a residual filter regardless of which indexes were used — this is what keeps intersecting multiple independent single-field indexes safe (no compound-index data structure needed).
+
+Two `FieldPredicate`s on the *same* field (e.g. from an explicit `{ $and: [{ age: { $gt: 5 } }, { age: { $lt: 10 } }] }`, which does not get merged into one predicate at compile time) are intersected the same way, so both bounds narrow the scan even though a single `NumberIndex.scan()` call only ever sees one predicate's operators at a time.
 
 `fieldPredicates()` only recurses into `and` nodes. It returns `[]` for `or` and `nor` nodes — disjunctive queries cannot be answered by a single index scan (would miss documents from unscanned branches).
 
@@ -299,7 +301,9 @@ pocketDb("./data.pdb")
 - Clean public API surface and TypeScript exports
 - Benchmarks vs. SQLite (in-memory and file-backed), JSON file, lowdb, and LokiJS, plus a cache vs. no-cache `pocket-db` comparison
 
-**V2 planned:** persisted index snapshots, automatic compaction, read snapshots, `durability: "strict" | "relaxed"` with fsync, streaming scan, improved query planner, `$or`/`$nor` index support.
+**V2 planned:** persisted index snapshots, automatic compaction, read snapshots, streaming scan, improved query planner, index support for `$or`/`$nor` queries. Note: `$or`/`$nor` themselves are already implemented and evaluated correctly (see the V1 list above) — what's still missing is the *index* side: `IndexManager.plan()`'s `fieldPredicates()` only recurses into `and` nodes, so a disjunctive query always falls back to a full collection scan even if every branch is individually indexable.
+
+`durability: "strict" | "relaxed"` (with `fsync`) is already implemented — see `OpenOptions.durability` and `FileStorage` (`fsyncSync` call gated on `durability === "strict"`) — and was mistakenly still listed here until corrected.
 
 **V3 planned:** compound indexes, lightweight transactions, compression, optional native C engine.
 
@@ -312,5 +316,7 @@ When testing storage-layer behavior (e.g. crash recovery, transaction replay), t
 `existsId()` was removed from the public `Collection` interface. Tests that previously used it now use `findOne({ _id }) !== null` (with the assertion made before `db.close()` since `findOne` reads from disk).
 
 The hot-document cache is covered by `tests/document-cache.test.ts`: unit tests construct `DocumentCache` directly (imported from `src/api/document-cache.js`) to exercise offset versioning, LRU eviction, oversized-doc rejection, shrink-to-fit, and stats; integration tests go through `Collection.enableCache()` and assert priming on insert, hotness across updates, invalidation on delete, the cursor-snapshot invariant *with the cache enabled* (replace mid-cursor, still read the old version), and that mutating a returned document does not corrupt the cache. The benchmark adds a `pocket-db (relaxed-json-cache)` adapter (cache enabled via a `cache` token in the adapter mode) and a `findByIdHot (16)` case to compare against the non-cached adapter.
+
+The planner's candidate intersection is covered by `tests/index-manager.test.ts`: unit tests construct `IndexManager`/`InMemoryPrimaryIndex` directly (imported from `src/indexes/index.js`) and call `plan()` with a query built through the real `compileQuery()`, asserting on `plan.candidates` and `plan.usedIndexes` directly. This is deliberately white-box — a black-box test through `Collection.find()` can't distinguish "intersected correctly" from "picked the smaller index and let the residual filter catch the rest," since both produce the same final documents (the residual query is always fully re-evaluated regardless of which candidates the planner picked).
 
 Unique indexes are covered by `tests/unique-index.test.ts`: creation-time checks (default non-unique, creating over empty/conflict-free/conflicting collections, type/missing-field exemptions, re-creating with a mismatched `unique` flag), write-path enforcement across `insertOne`/`insertMany`/`replaceOne`/`updateOne`/`updateMany` (including in-batch collisions and "keep my own value" cases), and persistence across reopen and `compact()`. The cross-engine benchmark suite (`benchmarks/`) was intentionally left untouched — `unique` is a pocket-db-only construct not shared by the comparison adapters (SQLite, lowdb, LokiJS, JSON-file), and the existing `BenchDocument` schema has no field that's naturally unique per document.

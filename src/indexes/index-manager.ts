@@ -174,11 +174,37 @@ export class IndexManager {
     this.indexesByField.clear();
   }
 
+  /**
+   * Builds a query plan by narrowing candidates through every indexable field
+   * predicate in `query`, then intersecting the results.
+   *
+   * Earlier versions of this planner picked a single "best" index (the one
+   * with the fewest candidates) and left every other predicate to the
+   * residual per-document filter — so a query like `{ role: "admin", age: {
+   * $gt: 30 } }` with both fields indexed only ever benefited from one of the
+   * two indexes. This version resolves *every* indexable predicate
+   * independently (still picking the smallest available index per field, in
+   * case more than one index could answer the same predicate) and intersects
+   * all of the resulting candidate sets by id, so the final candidate list is
+   * never larger than the smallest single-index result and is usually much
+   * smaller. Predicates with no matching index simply contribute nothing to
+   * the intersection — they are still checked in full by the residual filter,
+   * exactly as before.
+   *
+   * This does not require compound indexes: it's a planning-time combination
+   * of independent single-field indexes, so it also applies when the same
+   * field is constrained by two separate predicates (e.g. `{ $and: [{ age: {
+   * $gt: 5 } }, { age: { $lt: 10 } }] }`, which compiles to two separate
+   * `FieldPredicate`s on `age` rather than one).
+   */
   plan(query: CompiledQuery, primaryIndex: PrimaryIndex): QueryPlan {
-    let selectedCandidates: IndexCandidate[] | null = null;
-    let selectedIndex: IndexDefinition | undefined;
+    const perPredicateCandidates: IndexCandidate[][] = [];
+    const usedIndexes: IndexDefinition[] = [];
 
     for (const predicate of fieldPredicates(query)) {
+      let bestCandidates: IndexCandidate[] | null = null;
+      let bestIndex: IndexDefinition | undefined;
+
       for (const index of this.indexesForPredicate(predicate, primaryIndex)) {
         const candidates = index.scan(predicate);
 
@@ -186,17 +212,30 @@ export class IndexManager {
           continue;
         }
 
-        if (!selectedCandidates || candidates.length < selectedCandidates.length) {
-          selectedCandidates = candidates;
-          selectedIndex = index.definition;
+        if (!bestCandidates || candidates.length < bestCandidates.length) {
+          bestCandidates = candidates;
+          bestIndex = index.definition;
         }
+      }
+
+      if (bestCandidates) {
+        perPredicateCandidates.push(bestCandidates);
+        usedIndexes.push(bestIndex!);
       }
     }
 
+    if (perPredicateCandidates.length === 0) {
+      return {
+        candidates: primaryIndex.snapshot(),
+        residualQuery: query,
+        usedIndexes: []
+      };
+    }
+
     return {
-      candidates: selectedCandidates ?? primaryIndex.snapshot(),
+      candidates: intersectCandidates(perPredicateCandidates),
       residualQuery: query,
-      usedIndex: selectedIndex
+      usedIndexes
     };
   }
 
@@ -230,6 +269,38 @@ function fieldPredicates(query: CompiledQuery): FieldPredicate[] {
   }
 
   return [];
+}
+
+/**
+ * Intersects candidate lists from independent index scans by `id`.
+ *
+ * Sorts the lists smallest-first so the accumulator starts as small as
+ * possible, and bails out as soon as the running intersection is empty —
+ * no later list can add candidates back in. A single list is returned as-is
+ * (no `Map` churn needed).
+ */
+function intersectCandidates(candidateLists: IndexCandidate[][]): IndexCandidate[] {
+  if (candidateLists.length === 1) {
+    return candidateLists[0];
+  }
+
+  const bySize = [...candidateLists].sort((a, b) => a.length - b.length);
+  let result = new Map(bySize[0].map((candidate) => [candidate.id, candidate] as const));
+
+  for (let i = 1; i < bySize.length && result.size > 0; i++) {
+    const idsInList = new Set(bySize[i].map((candidate) => candidate.id));
+    const next = new Map<string, IndexCandidate>();
+
+    for (const [id, candidate] of result) {
+      if (idsInList.has(id)) {
+        next.set(id, candidate);
+      }
+    }
+
+    result = next;
+  }
+
+  return Array.from(result.values());
 }
 
 /**

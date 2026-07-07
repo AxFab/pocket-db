@@ -136,7 +136,7 @@ responsibilities are:
 - **Create / remove** secondary indexes (`createIndex`, `removeIndex`).
 - **Maintain** index contents as documents are inserted, updated, or deleted
   (`updateDocument`, `removeDocument`).
-- **Plan** queries by selecting the most selective index (`plan`).
+- **Plan** queries by resolving every indexable predicate and intersecting their results (`plan`).
 - **Clear** index contents for compaction refresh (`clearAllIndexContents`).
 - **Enforce** `unique` constraints on the write path (`assertUnique`,
   `assertUniqueBatch`) and at index-creation time (`findDuplicate`) — see
@@ -144,34 +144,60 @@ responsibilities are:
 
 ## Query Planner
 
-`IndexManager.plan(compiledQuery, primaryIndex)` selects at most one index to
-narrow the candidate set for a query. The algorithm:
+`IndexManager.plan(compiledQuery, primaryIndex)` resolves **every** indexable
+predicate independently and intersects their results, rather than picking a
+single "best" index and leaving the rest to the residual filter. The
+algorithm:
 
-1. Walk every `FieldPredicate` node in the compiled query tree.
+1. Walk every `FieldPredicate` node in the compiled query tree (via
+   `fieldPredicates()`).
 2. For each predicate, look for a matching index:
    - the primary index if the predicate is on `_id`;
    - a secondary index if one exists for the predicate's field.
 3. Ask each candidate index to `scan` the predicate; `scan` returns a candidate
-   list or `null` if the index cannot answer that predicate type.
-4. Among all non-null results, pick the index with the **fewest candidates**
-   (smallest result set).
+   list or `null` if the index cannot answer that predicate type. If more than
+   one index can answer the same predicate, keep the one with the **fewest
+   candidates** (this can only happen if a secondary index happens to share
+   the primary index's field).
+4. Intersect the per-predicate candidate lists **by id** (`intersectCandidates`).
+   Predicates with no matching index contribute nothing to the intersection —
+   they are still checked in full by the residual filter, same as before.
 
-If no index can serve any predicate, the planner falls back to `primaryIndex.
-snapshot()`, which is the full collection scan.
+If *no* predicate can be answered by any index, the planner falls back to
+`primaryIndex.snapshot()`, which is the full collection scan.
 
-The selected index and its candidates are returned in a `QueryPlan`:
+Two field predicates on the same field also intersect correctly — this comes
+up when a query uses an explicit `$and` with the field repeated (e.g. `{
+$and: [{ age: { $gt: 5 } }, { age: { $lt: 10 } }] }` compiles to two separate
+`FieldPredicate`s on `age`, not one merged predicate), and it means both
+bounds narrow the scan even though `NumberIndex.scan()` only ever sees one of
+them at a time.
+
+`intersectCandidates` sorts the lists smallest-first (so the running result
+starts as small as possible) and stops as soon as the intersection is empty,
+since no later list can add candidates back in.
+
+The used indexes and final candidates are returned in a `QueryPlan`:
 
 ```ts
 interface QueryPlan {
   candidates: IndexCandidate[];
   residualQuery: CompiledQuery;
-  usedIndex?: IndexDefinition;
+  usedIndexes: IndexDefinition[]; // one per indexable predicate; [] means a full scan
 }
 ```
 
 `residualQuery` is always the full compiled query. Indexes only narrow
 candidates; document-level filtering is always performed regardless of which
-index was used.
+indexes were used — this is what makes the intersection safe even though each
+index only guarantees a conservative superset for its own predicate.
+
+Compound (multi-field) indexes are not implemented — this is planning-time
+combination of independent single-field indexes, not a new index type. A
+compound index on `(role, age)` would still answer a query like `{ role:
+"admin", age: { $gt: 30 } }` with a single lookup instead of two scans plus an
+intersection, but requires a different on-disk representation and is tracked
+separately (see the project's V3 plans).
 
 ## Indexes Narrow, Documents Filter
 

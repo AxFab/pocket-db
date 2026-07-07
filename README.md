@@ -304,7 +304,7 @@ users.createIndex("email", { type: "string", unique: true });
 users.dropIndex("role");
 ```
 
-`StringIndex` supports `$eq` and `$in` lookups. `NumberIndex` additionally supports `$gt`, `$gte`, `$lt`, `$lte` range scans. The query planner automatically picks the most selective available index for each query.
+`StringIndex` supports `$eq` and `$in` lookups. `NumberIndex` additionally supports `$gt`, `$gte`, `$lt`, `$lte` range scans. When a query constrains several indexed fields at once (e.g. `{ role: "admin", age: { $gt: 30 } }`), the planner resolves each field's index independently and intersects the results, rather than using only one of them.
 
 `unique: true` (default `false`) turns an index into a uniqueness constraint, checked on every `insertOne`/`insertMany`/`replaceOne`/`updateOne`/`updateMany` before the write is committed. Only values matching the index's own type participate — a missing field or a value of a different type never conflicts. Creating a unique index over a collection that already has conflicting values throws and leaves the collection unchanged. See [docs/indexes.md](docs/indexes.md#unique-indexes) for details.
 
