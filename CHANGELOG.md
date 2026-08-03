@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.5] — 2026-08-02
+
+### Fixed
+
+- **Reading pre-0.1.4 databases with indexes crashed on open** — 0.1.4 added a "unique"
+  byte to the `idx1` (create index) log record, inserted right after the type byte. Files
+  written before 0.1.4 don't have that byte, so `decodeCreateIndexPayload` misread the first
+  byte of the field-name length as the unique flag and threw `Invalid create index
+  operation: unique flag must be 0 or 1.` on `open()` for any database that had a
+  secondary index created before the 0.1.4 upgrade. The decoder now tries the current
+  (post-0.1.4) layout first and falls back to the legacy layout — defaulting
+  `unique: false`, matching the documented default — when the current layout doesn't
+  validate. Existing `.pdb` files with indexes created on 0.1.0–0.1.3 now open normally
+  again; no migration or `compact()` is required.
+
+---
+
 ## [0.1.4] — 2026-07-07
 
 ### Added

@@ -92,6 +92,69 @@ export function decodeDropIndexPayload(payload: Buffer): DropIndexOperation {
   };
 }
 
+function decodeCreateIndexPayloadCurrent(
+  payload: Buffer,
+  collectionId: Buffer,
+  type: StoredIndexType
+): CreateIndexOperation | null {
+  // v0.1.4+ layout: collectionId(4) + type(1) + unique(1) + U29 field length + field bytes.
+  const uniqueByte = payload.readUInt8(5);
+
+  if (uniqueByte !== 0 && uniqueByte !== 1) {
+    return null;
+  }
+
+  const encodedField = decodeU29(payload, 6);
+  const fieldStart = 6 + encodedField.bytesRead;
+  const fieldEnd = fieldStart + encodedField.value;
+
+  if (fieldEnd > payload.byteLength) {
+    return null;
+  }
+
+  const padding = payload.subarray(fieldEnd);
+
+  if (!padding.every((byte) => byte === 0)) {
+    return null;
+  }
+
+  return {
+    collectionId,
+    type,
+    unique: uniqueByte === 1,
+    field: payload.subarray(fieldStart, fieldEnd).toString("utf8")
+  };
+}
+
+function decodeCreateIndexPayloadLegacy(
+  payload: Buffer,
+  collectionId: Buffer,
+  type: StoredIndexType
+): CreateIndexOperation | null {
+  // pre-0.1.4 layout (no unique byte): collectionId(4) + type(1) + U29 field length + field bytes.
+  // Records written before the "unique" byte was introduced default to unique: false.
+  const encodedField = decodeU29(payload, 5);
+  const fieldStart = 5 + encodedField.bytesRead;
+  const fieldEnd = fieldStart + encodedField.value;
+
+  if (fieldEnd > payload.byteLength) {
+    return null;
+  }
+
+  const padding = payload.subarray(fieldEnd);
+
+  if (!padding.every((byte) => byte === 0)) {
+    return null;
+  }
+
+  return {
+    collectionId,
+    type,
+    unique: false,
+    field: payload.subarray(fieldStart, fieldEnd).toString("utf8")
+  };
+}
+
 export function decodeCreateIndexPayload(payload: Buffer): CreateIndexOperation {
   const collectionId = Buffer.from(payload.subarray(0, 4));
   assertCollectionId(collectionId);
@@ -102,30 +165,13 @@ export function decodeCreateIndexPayload(payload: Buffer): CreateIndexOperation 
     throw new Error("Invalid create index operation: unknown index type.");
   }
 
-  const uniqueByte = payload.readUInt8(5);
+  const result =
+    decodeCreateIndexPayloadCurrent(payload, collectionId, type) ??
+    decodeCreateIndexPayloadLegacy(payload, collectionId, type);
 
-  if (uniqueByte !== 0 && uniqueByte !== 1) {
-    throw new Error("Invalid create index operation: unique flag must be 0 or 1.");
+  if (!result) {
+    throw new Error("Invalid create index operation: unrecognized payload layout.");
   }
 
-  const encodedField = decodeU29(payload, 6);
-  const fieldStart = 6 + encodedField.bytesRead;
-  const fieldEnd = fieldStart + encodedField.value;
-
-  if (fieldEnd > payload.byteLength) {
-    throw new Error("Invalid create index operation: field exceeds payload length.");
-  }
-
-  const padding = payload.subarray(fieldEnd);
-
-  if (!padding.every((byte) => byte === 0)) {
-    throw new Error("Invalid create index operation: non-zero padding.");
-  }
-
-  return {
-    collectionId,
-    type,
-    unique: uniqueByte === 1,
-    field: payload.subarray(fieldStart, fieldEnd).toString("utf8")
-  };
+  return result;
 }
