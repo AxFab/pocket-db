@@ -19,6 +19,7 @@ made, and what they trade off against.
 | [0012](0012-synchronous-writes.md) | All Storage I/O Is Synchronous, No Write Queue | Accepted |
 | [0013](0013-mongodb-style-object-id.md) | 12-Byte ObjectId-Style Document Identifiers | Accepted |
 | [0014](0014-clone-to-new-file.md) | Clone Writes the Live Data Set to a New File, Separate from `compact()` | Proposed |
+| [0015](0015-lockfree-readonly-sessions.md) | Lock-Free Readonly Sessions via a Sidecar Generation Counter and Per-Record Identity Checks | Proposed |
 
 See also the spec-level docs these ADRs reference: [storage.md](../storage.md),
 [file-format.md](../file-format.md), [indexes.md](../indexes.md),
