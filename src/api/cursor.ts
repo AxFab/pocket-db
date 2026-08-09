@@ -1,6 +1,6 @@
 import { evaluateCompiledQuery, type CompiledQuery, type DocumentRecord } from "../search/index.js";
 import { compareDocuments, parseSortSpec, type SortDirection, type SortField } from "../search/sort.js";
-import { FILE_HEADER_BYTES, PUT_DOCUMENT_OPERATION } from "../storage/constants.js";
+import { PUT_DOCUMENT_OPERATION } from "../storage/constants.js";
 import { decodePutDocumentPayload } from "../storage/document-operation.js";
 import type { DocumentEncoder } from "../storage/encoding/document-encoder.js";
 import type { FileStorage } from "../storage/file-storage.js";
@@ -11,6 +11,13 @@ import type { Cursor } from "./types.js";
 export interface QueryCandidate {
   id: string;
   offset: number;
+}
+
+/** A pre-loaded byte range from {@link FileStorage.readBulkRange}. */
+export interface BulkRange {
+  buffer: Buffer;
+  /** Absolute file offset that `buffer[0]` corresponds to. */
+  rangeStart: number;
 }
 
 export class PocketCursor implements Cursor {
@@ -29,8 +36,9 @@ export class PocketCursor implements Cursor {
    * @param storage     File storage used for individual record reads (fallback).
    * @param query       Compiled residual query evaluated against every candidate.
    * @param candidates  Snapshot of { id, offset } pairs captured at find() time.
-   * @param bulkBuffer  Optional pre-loaded file content (starting at FILE_HEADER_BYTES).
-   *                    When provided, all document reads are served from this buffer
+   * @param bulkRange   Optional pre-loaded byte range covering every candidate
+   *                    offset (see {@link FileStorage.readBulkRange}). When
+   *                    provided, all document reads are served from this range
    *                    with zero additional syscalls.
    * @param encoder     Document encoder used to deserialize payload bytes.
    * @param cache       Optional hot-document cache. When `null` (the default,
@@ -41,7 +49,7 @@ export class PocketCursor implements Cursor {
     private readonly storage: FileStorage,
     private readonly query: CompiledQuery,
     private readonly candidates: QueryCandidate[],
-    private readonly bulkBuffer: Buffer | null = null,
+    private readonly bulkRange: BulkRange | null = null,
     private readonly encoder: DocumentEncoder,
     private readonly cache: DocumentCache | null = null
   ) {}
@@ -50,6 +58,8 @@ export class PocketCursor implements Cursor {
     if (this.sortFields !== null) {
       return this.nextSorted();
     }
+
+    this.applyMatchAllSkipFastPath();
 
     while (this.currentIndex < this.candidates.length) {
       if (this.limitCount !== null && this.returnedCount >= this.limitCount) {
@@ -130,6 +140,34 @@ export class PocketCursor implements Cursor {
   }
 
   /**
+   * Fast-forwards past skipped candidates without reading or decoding them,
+   * when possible.
+   *
+   * Applies only to the unsorted path (sorting always reads every matching
+   * candidate up front regardless of skip — see `nextSorted`). When the
+   * residual query is match-all, every candidate counts toward `skip`
+   * unconditionally, so which ones get skipped never depends on their
+   * content — the same reasoning `count()`'s match-all fast path already
+   * relies on. That means `currentIndex` can jump straight to `skipCount`
+   * with no document reads at all, instead of reading and discarding each
+   * skipped candidate one at a time.
+   *
+   * A non-match-all query can't take this shortcut: `skip` counts *matching*
+   * documents, so whether a given candidate counts toward it depends on
+   * evaluating the query against it first.
+   *
+   * Runs once, lazily, before the first candidate is read (guarded by
+   * `currentIndex === 0 && skippedMatches === 0`) — safe to call on every
+   * `next()` since it's a no-op on every call after the first.
+   */
+  private applyMatchAllSkipFastPath(): void {
+    if (this.currentIndex === 0 && this.skippedMatches === 0 && this.skipCount > 0 && isMatchAll(this.query)) {
+      this.currentIndex = Math.min(this.skipCount, this.candidates.length);
+      this.skippedMatches = this.skipCount;
+    }
+  }
+
+  /**
    * Sorted path for next(): builds and sorts the full result set on the first
    * call, then yields one document per subsequent call.
    *
@@ -205,8 +243,8 @@ export class PocketCursor implements Cursor {
       }
     }
 
-    const operation = this.bulkBuffer !== null
-      ? readOperationFromBuffer(this.bulkBuffer, candidate.offset - FILE_HEADER_BYTES)
+    const operation = this.bulkRange !== null
+      ? readOperationFromBuffer(this.bulkRange.buffer, candidate.offset - this.bulkRange.rangeStart)
       : this.storage.readOperationAtOffset(candidate.offset);
 
     if (!operation.identifier.equals(PUT_DOCUMENT_OPERATION)) {

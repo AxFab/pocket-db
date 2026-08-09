@@ -16,6 +16,15 @@ import {
 import { decodeOperationRecord, encodeOperationRecord, readOperationFromBuffer, type OperationRecord } from "./operation-record.js";
 import type { DurabilityMode } from '../types.js'
 
+/**
+ * Default sliding-window size for {@link FileStorage.readOperations}. Trades
+ * syscall count against peak memory: at pocket-db's typical record sizes this
+ * reads on the order of thousands of records per underlying `readSync` call,
+ * while keeping resident memory bounded to a small multiple of this value
+ * regardless of how large the log itself is.
+ */
+export const DEFAULT_REPLAY_CHUNK_BYTES = 8 * 1024 * 1024;
+
 export class FileStorage {
   private currentOffset: number;
 
@@ -157,46 +166,105 @@ export class FileStorage {
   }
 
   /**
-   * Read the entire operation log (everything after the file header) into a
-   * single in-memory Buffer. One syscall regardless of how many records exist.
+   * Reads the minimum contiguous byte range that covers every offset in
+   * `offsets`: from the lowest offset to the end of the record starting at
+   * the highest. Used by the cursor's multi-candidate read path so a query
+   * only pulls in the part of the log its candidates actually live in,
+   * instead of the whole file (see `docs/adr/0016-bounded-candidate-range-read.md`).
    *
-   * The returned buffer is independent of the file descriptor and remains valid
-   * after the file is written to or closed.
+   * The record at the highest offset isn't known to end anywhere in
+   * particular until its length is read, so this costs one small header read
+   * (8 bytes) before the main range read — negligible next to the bytes it
+   * saves skipping.
+   *
+   * `offsets` must be non-empty. The returned buffer is independent of the
+   * file descriptor and remains valid after the file is written to or closed;
+   * `rangeStart` is the absolute file offset the buffer's first byte
+   * corresponds to (callers index into it as `offset - rangeStart`, not
+   * `offset - FILE_HEADER_BYTES`).
    */
-  readBulk(): Buffer {
-    const length = this.currentOffset - FILE_HEADER_BYTES;
+  readBulkRange(offsets: readonly number[]): { buffer: Buffer; rangeStart: number } {
+    let minOffset = offsets[0];
+    let maxOffset = offsets[0];
 
-    if (length <= 0) {
-      return Buffer.alloc(0);
+    for (const offset of offsets) {
+      if (offset < minOffset) minOffset = offset;
+      if (offset > maxOffset) maxOffset = offset;
     }
 
-    return readExact(this.fd, length, FILE_HEADER_BYTES);
+    const maxHeader = readExact(this.fd, OPERATION_HEADER_BYTES, maxOffset);
+    const maxPayloadLength = maxHeader.readUInt32BE(OPERATION_IDENTIFIER_BYTES);
+    const maxRecordEnd = maxOffset + OPERATION_HEADER_BYTES + maxPayloadLength + OPERATION_CRC32_BYTES;
+
+    const rangeEnd = Math.min(maxRecordEnd, this.currentOffset);
+    const buffer = readExact(this.fd, rangeEnd - minOffset, minOffset);
+
+    return { buffer, rangeStart: minOffset };
   }
 
   /**
-   * Read and parse all operation records sequentially.
+   * Reads and parses operation records sequentially, without ever holding the
+   * whole log in memory at once.
    *
-   * Internally performs a single bulk read of the operation log and parses
-   * every record from the in-memory buffer, replacing the previous approach
-   * of one `readSync` per record.
+   * Maintains a sliding read window of `chunkBytes` (default
+   * {@link DEFAULT_REPLAY_CHUNK_BYTES}): it fills the window from disk,
+   * yields every record it can fully satisfy from what's buffered, then
+   * refills once the remainder can't cover the next record. A single record
+   * larger than `chunkBytes` still works correctly — the window grows just
+   * enough to hold that one record and shrinks back on the next refill. Peak
+   * memory is therefore O(chunkBytes + largest single record), not O(file
+   * size) — see `docs/adr/0016-bounded-candidate-range-read.md`'s sibling
+   * decision on bounded replay memory.
+   *
+   * Every current consumer (`loadCollections`, `computeStorageStats`,
+   * `compact`) already iterates with a plain `for...of` and never relied on
+   * random access or `.length`, so this generator is a drop-in replacement
+   * for the previous "read the whole log into one Buffer, parse every record
+   * into an array" implementation — no caller changes required. `identifier`
+   * and `payload` on each yielded record are independent copies (see
+   * {@link readOperationFromBuffer}), so callers may hold onto them past the
+   * next window refill without risk of the underlying window buffer changing
+   * under them.
    */
-  readOperations(): OperationRecord[] {
-    const bulk = this.readBulk();
+  *readOperations(chunkBytes: number = DEFAULT_REPLAY_CHUNK_BYTES): Generator<OperationRecord> {
+    const end = this.currentOffset;
+    let fileOffset = FILE_HEADER_BYTES;
+    let window: Buffer<ArrayBufferLike> = Buffer.alloc(0);
 
-    if (bulk.length === 0) {
-      return [];
+    const fill = (minBytes: number): boolean => {
+      while (window.length < minBytes) {
+        const remaining = end - (fileOffset + window.length);
+        if (remaining <= 0) {
+          return window.length >= minBytes;
+        }
+
+        const readLength = Math.min(Math.max(chunkBytes, minBytes - window.length), remaining);
+        const next = readExact(this.fd, readLength, fileOffset + window.length);
+        window = window.length === 0 ? next : Buffer.concat([window, next]);
+      }
+
+      return true;
+    };
+
+    while (true) {
+      if (!fill(OPERATION_HEADER_BYTES)) {
+        if (window.length === 0) break;
+        throw new Error("Invalid operation record: unexpected end of file.");
+      }
+
+      const payloadLength = window.readUInt32BE(OPERATION_IDENTIFIER_BYTES);
+      const recordLength = OPERATION_HEADER_BYTES + payloadLength + OPERATION_CRC32_BYTES;
+
+      if (!fill(recordLength)) {
+        throw new Error("Invalid operation record: unexpected end of file.");
+      }
+
+      const operation = readOperationFromBuffer(window, 0);
+      yield { ...operation, offset: fileOffset };
+
+      fileOffset += recordLength;
+      window = window.subarray(recordLength);
     }
-
-    const operations: OperationRecord[] = [];
-    let relOffset = 0;
-
-    while (relOffset < bulk.length) {
-      const operation = readOperationFromBuffer(bulk, relOffset);
-      operations.push({ ...operation, offset: FILE_HEADER_BYTES + relOffset });
-      relOffset += operation.byteLength;
-    }
-
-    return operations;
   }
 }
 

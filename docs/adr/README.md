@@ -20,6 +20,8 @@ made, and what they trade off against.
 | [0013](0013-mongodb-style-object-id.md) | 12-Byte ObjectId-Style Document Identifiers | Accepted |
 | [0014](0014-clone-to-new-file.md) | Clone Writes the Live Data Set to a New File, Separate from `compact()` | Proposed |
 | [0015](0015-lockfree-readonly-sessions.md) | Lock-Free Readonly Sessions via a Sidecar Generation Counter and Per-Record Identity Checks | Proposed |
+| [0016](0016-bounded-candidate-range-read.md) | Multi-Candidate Reads Are Bounded to the Candidate Range, Not the Whole File | Accepted |
+| [0017](0017-streaming-replay-buffer.md) | Replay Reads the Log Through a Bounded Sliding Window, Not One Whole-File Buffer | Accepted |
 
 See also the spec-level docs these ADRs reference: [storage.md](../storage.md),
 [file-format.md](../file-format.md), [indexes.md](../indexes.md),

@@ -20,6 +20,7 @@ import type { DocumentEncoder } from "../storage/encoding/document-encoder.js";
 import type { FileStorage } from "../storage/file-storage.js";
 import { encodeCreateIndexPayload, encodeDropIndexPayload } from "../storage/index-operation.js";
 import { encodeDropCollectionPayload } from "../storage/collection-operation.js";
+import { readOperationFromBuffer } from "../storage/operation-record.js";
 import { PocketCursor } from "./cursor.js";
 import { DocumentCache, type DocumentCacheStats } from "./document-cache.js";
 import type {
@@ -42,10 +43,10 @@ import type {
 
 /**
  * Minimum number of candidates required before the cursor pre-loads the
- * entire operation log into memory for zero-syscall document reads.
+ * candidate range into memory for zero-syscall document reads.
  *
  * Below this threshold (e.g. findById, updateOne, deleteOne) the existing
- * per-record readSync path is cheaper than a full file read.
+ * per-record readSync path is cheaper than a bulk range read.
  */
 const SCAN_PRELOAD_THRESHOLD = 2;
 
@@ -348,23 +349,25 @@ export class PocketCollection implements Collection {
     const compiledQuery = compileQuery(query);
     const plan = this.indexManager.plan(compiledQuery, this.primaryIndex);
 
-    // Pre-load the entire operation log into a single Buffer when there are
-    // enough candidates to justify the cost. This reduces N×3 individual
-    // readSync syscalls (one per candidate: header, payload, CRC32) down to
-    // a single bulk read, at the cost of holding the file content in memory
-    // for the lifetime of the cursor.
+    // Pre-load the byte range spanning the candidate set into a single Buffer
+    // when there are enough candidates to justify the cost. This reduces N×3
+    // individual readSync syscalls (one per candidate: header, payload,
+    // CRC32) down to two (one small header peek + one range read), at the
+    // cost of holding that range in memory for the lifetime of the cursor.
+    // Only the span the candidates actually occupy is read — not the whole
+    // file — see `FileStorage.readBulkRange`.
     //
     // For single-document lookups (findById, updateOne, deleteOne) the
     // per-record path is cheaper, so we only pre-load above the threshold.
-    const bulkBuffer = plan.candidates.length >= SCAN_PRELOAD_THRESHOLD
-      ? this.storage.readBulk()
+    const bulkRange = plan.candidates.length >= SCAN_PRELOAD_THRESHOLD
+      ? this.storage.readBulkRange(plan.candidates.map((candidate) => candidate.offset))
       : null;
 
     return new PocketCursor(
       this.storage,
       plan.residualQuery,
       plan.candidates,
-      bulkBuffer,
+      bulkRange,
       this.encoder,
       this.cache
     );
@@ -586,8 +589,26 @@ export class PocketCollection implements Collection {
   refreshIndexesAfterCompaction(): void {
     this.indexManager.clearAllIndexContents();
 
-    for (const candidate of this.primaryIndex.snapshot()) {
-      const document = this.readDocumentAtOffset(candidate.offset);
+    const candidates = this.primaryIndex.snapshot();
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    // Same bulk-range read as rebuildIndex() and find()'s multi-candidate
+    // scan — one range read instead of one readOperationAtOffset call per
+    // document, which matters here just as much: compact() is precisely the
+    // maintenance operation someone reaches for on a large database.
+    const { buffer, rangeStart } = this.storage.readBulkRange(candidates.map((candidate) => candidate.offset));
+
+    for (const candidate of candidates) {
+      const operation = readOperationFromBuffer(buffer, candidate.offset - rangeStart);
+
+      if (!operation.identifier.equals(PUT_DOCUMENT_OPERATION)) {
+        throw new Error("Invalid index refresh candidate: expected a put document operation.");
+      }
+
+      const document = decodePutDocumentPayload(operation.payload, this.encoder).document;
       this.indexManager.updateDocument(document as DocumentRecord, candidate);
     }
   }
@@ -735,9 +756,37 @@ export class PocketCollection implements Collection {
     return definition;
   }
 
+  /**
+   * Backfills a newly created (or replayed) index from every document
+   * currently in the collection.
+   *
+   * Uses the same bulk-range read as `find()`'s multi-candidate scan (see
+   * `FileStorage.readBulkRange`) instead of one `readOperationAtOffset` call
+   * per document: on a collection with N existing documents that's 2
+   * syscalls total instead of up to 3×N. This matters most exactly where
+   * rebuilding is most expensive — `createIndex()` called on an
+   * already-populated collection, and replaying an `idx1` record for a
+   * collection whose documents were all inserted before it in the log (see
+   * `docs/adr/0003-replay-based-startup.md`'s documented O(documents ×
+   * indexes) startup cost).
+   */
   private rebuildIndex(_definition: SecondaryIndexDefinition): void {
-    for (const candidate of this.primaryIndex.snapshot()) {
-      const document = this.readDocumentAtOffset(candidate.offset);
+    const candidates = this.primaryIndex.snapshot();
+
+    if (candidates.length === 0) {
+      return;
+    }
+
+    const { buffer, rangeStart } = this.storage.readBulkRange(candidates.map((candidate) => candidate.offset));
+
+    for (const candidate of candidates) {
+      const operation = readOperationFromBuffer(buffer, candidate.offset - rangeStart);
+
+      if (!operation.identifier.equals(PUT_DOCUMENT_OPERATION)) {
+        throw new Error("Invalid index rebuild candidate: expected a put document operation.");
+      }
+
+      const document = decodePutDocumentPayload(operation.payload, this.encoder).document;
 
       this.indexManager.updateDocument(document as DocumentRecord, {
         id: candidate.id,
@@ -746,15 +795,6 @@ export class PocketCollection implements Collection {
     }
   }
 
-  private readDocumentAtOffset(offset: number): Record<string, unknown> {
-    const operation = this.storage.readOperationAtOffset(offset);
-
-    if (!operation.identifier.equals(PUT_DOCUMENT_OPERATION)) {
-      throw new Error("Invalid index rebuild candidate: expected a put document operation.");
-    }
-
-    return decodePutDocumentPayload(operation.payload, this.encoder).document;
-  }
 }
 
 function assertUpdateDoesNotMutateId(update: UpdateExpression): void {

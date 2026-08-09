@@ -5,7 +5,8 @@
   "description": "Comparative benchmarks for pocket-db vs SQLite, a naive JSON-file store, lowdb, and LokiJS. Not published.",
   "type": "module",
   "scripts": {
-    "bench": "node --import tsx bench.ts"
+    "bench": "node --import tsx bench.ts",
+    "bench:large": "node --import tsx large-scale.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

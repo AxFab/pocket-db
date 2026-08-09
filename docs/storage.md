@@ -35,6 +35,11 @@ Replay fails hard if:
 - a `txnb` appears while a transaction is already open;
 - a `txnc` appears with no preceding `txnb`.
 
+Replay reads the log through a bounded sliding window (`FileStorage.readOperations()`,
+default 8MiB), not by loading the whole file into memory at once — peak memory
+during `open()`/`stats()`/`compact()` is a small multiple of the window size,
+not the file size. See [ADR 0017](adr/0017-streaming-replay-buffer.md).
+
 ## Write Path
 
 All writes go through `FileStorage.appendOperation(identifier, payload)`:
@@ -127,7 +132,10 @@ must ensure no cursors are alive when compaction runs. See
 Secondary indexes are in-memory only. Their definitions (`idx1` records) are
 persisted in the log, but their contents are rebuilt from documents at every
 open. For large databases with many secondary indexes, startup time grows
-proportionally to the number of live documents.
+proportionally to the number of live documents. The rebuild itself reads
+every existing document via one bulk range read per index (not one `readSync`
+per document — see [ADR 0016](adr/0016-bounded-candidate-range-read.md)), so
+this cost is dominated by JSON decode rather than syscall overhead.
 
 Persisted index snapshots that allow skipping the rebuild on open are planned
 for V2.

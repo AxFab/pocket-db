@@ -54,7 +54,9 @@ src/native/       ← reserved for future C backend (empty, interfaces only)
 
 Reading a document later means calling `readOperationAtOffset(offset)` — only the bytes for that one record are read from disk.
 
-**Bulk-read optimization:** when the query planner selects ≥ 2 candidates, the cursor reads all their byte ranges in a single `readSync` call (one contiguous read from the first offset to the last), then slices each document out of the in-memory buffer. Single-candidate reads still use `readOperationAtOffset` directly.
+**Bulk-read optimization (`readBulkRange(offsets)`):** given a set of offsets, reads the minimum contiguous span covering all of them — from the lowest offset to the end of the record at the highest (one extra small header read determines that record's exact length) — never the whole file. Used by the cursor's multi-candidate path (query planner selects ≥ 2 candidates), and by `rebuildIndex()`/`refreshIndexesAfterCompaction()` to backfill/refresh a collection's secondary indexes from every existing document in one read instead of one `readOperationAtOffset` call per document. Single-candidate reads still use `readOperationAtOffset` directly. See [ADR 0016](docs/adr/0016-bounded-candidate-range-read.md).
+
+**Streaming replay (`readOperations()`):** a generator over a bounded sliding read window (default 8MiB, `DEFAULT_REPLAY_CHUNK_BYTES`), not a whole-file `Buffer` — peak memory during `open()`/`stats()`/`compact()` is a small multiple of the window size, not the file size. See [ADR 0017](docs/adr/0017-streaming-replay-buffer.md).
 
 **Binary encoding conventions:**
 - All multi-byte integers are big-endian.
@@ -95,6 +97,8 @@ When `open()` is called, `PocketDatabase` reads every operation record sequentia
 
 Replay fails hard if an operation references an unknown collection, or if a CRC check fails. Corruption handling and truncation recovery are planned but not yet implemented (see `docs/storage.md`).
 
+Replay reads the log through `FileStorage.readOperations()`'s bounded sliding window (not a whole-file buffer — see the Bulk-read/Streaming replay notes above), so `open()`'s peak memory is a small multiple of the window size regardless of file size. `idx1` mid-log (an index created after a collection already had documents) triggers `rebuildIndex()`, which reads every existing document via one `readBulkRange()` call — this, multiplied across every index on a large, already-populated database, is the dominant cost `docs/adr/0003-replay-based-startup.md` documents as `open()`'s O(documents × indexes) scaling.
+
 ### Collection API (`src/api/collection.ts`)
 
 `PocketCollection` holds:
@@ -126,6 +130,8 @@ Batch methods (`insertMany`, `updateMany`, `deleteMany`) wrap their individual r
 `find(query)` compiles the query, asks `IndexManager.plan()` for a candidate set, and returns a `PocketCursor`. The cursor captures a **snapshot** of `{ id, offset }` pairs at the moment `find()` is called. Subsequent writes do not affect open cursors (important invariant — tests explicitly verify this). Each `next()` call reads the document at its stored file offset and evaluates the residual query against it.
 
 **`count()`**: fast path when the compiled query is match-all (`{ type: "and", predicates: [] }`) — returns `candidates.length` with zero document reads. Otherwise scans all candidates and counts matches.
+
+**`skip()` match-all fast path:** on the unsorted path, when the residual query is match-all, `applyMatchAllSkipFastPath()` jumps `currentIndex` straight to `skipCount` before the first candidate is read — every candidate counts toward `skip` unconditionally in that case, so which ones get skipped never depends on reading them (same reasoning as `count()`'s fast path above). A non-match-all query still reads and evaluates every skipped candidate, since `skip` counts *matching* documents. Sorting bypasses this entirely (`nextSorted()` always reads every matching candidate up front, skip or not).
 
 **`sort(spec)`**: stores the sort spec (up to 4 fields, direction `1` or `-1`). On the first `next()` call after `sort()` is set, `nextSorted()` reads all matching documents eagerly into a buffer, sorts them, then yields with skip/limit applied. Sort is always eager — there is no sorted index.
 
@@ -293,7 +299,9 @@ pocketDb("./data.pdb")
 - `skip()` and `limit()` on cursor
 - Manual compaction (`db.compact()`)
 - Single-process file lock (`.lock` file with PID + stale detection)
-- Bulk-read optimization for multi-candidate scans
+- Bulk-range-read optimization (`readBulkRange`) for multi-candidate scans and index rebuild/refresh — bounded to the candidate span, not the whole file (see [ADR 0016](docs/adr/0016-bounded-candidate-range-read.md))
+- `skip()` match-all fast path — O(1) instead of O(skipCount) document reads when the residual query is match-all
+- Bounded-memory streaming replay (`readOperations()`, 8MiB sliding window) — `open()`/`stats()`/`compact()` peak memory no longer scales with file size (see [ADR 0017](docs/adr/0017-streaming-replay-buffer.md))
 - `pocketDb(path, options?)` convenience alias for `open()`
 - `Database.getCollections()` / `Database.existsCollection(name)`
 - `Collection.getIndexes()` / `Collection.existsIndex(name)`
@@ -302,6 +310,7 @@ pocketDb("./data.pdb")
 - `durability: "strict" | "relaxed"` option in `OpenOptions` (fsync after every write vs. OS page cache)
 - Clean public API surface and TypeScript exports
 - Benchmarks vs. SQLite (in-memory and file-backed), JSON file, lowdb, and LokiJS, plus a cache vs. no-cache `pocket-db` comparison
+- Large-scale, real-data benchmark (`benchmarks/large-scale.ts`, `npm run bench:large`) — read-only by default; `--rebuild-indexes` opt-in measures index rebuild cost against a copy
 
 **V2 planned:** persisted index snapshots, automatic compaction, read snapshots, streaming scan, improved query planner, `$or`/`$nor` index support (the operators themselves are already fully supported for query evaluation — see Query Compilation above — only index-assisted planning for disjunctive queries is still a full-scan fallback).
 

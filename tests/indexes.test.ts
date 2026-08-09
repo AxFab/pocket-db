@@ -154,6 +154,48 @@ describe("Collection indexes", () => {
     second.close();
   });
 
+  it("rebuilds an index on reopen when its documents are scattered by interleaved collections and updates", () => {
+    // Regression test for the bulk-range read used by rebuildIndex()
+    // (createIndexFromReplay): the index's documents are not contiguous in
+    // the log — another collection's records and superseded put1 versions
+    // sit between them — mirroring the real-world shape found while
+    // benchmarking large datasets (createIndex() called well after a
+    // collection was already populated, then reopened).
+    const path = join(createTempDirectory(), "test.pdb");
+    const first = pocketDb({ path });
+    const users = first.collection("users");
+    const logs = first.collection("logs");
+
+    const ada = users.insertOne({ name: "Ada", role: "admin" }).insertedId;
+    logs.insertOne({ line: "noise-1" });
+    const grace = users.insertOne({ name: "Grace", role: "admin" }).insertedId;
+    logs.insertOne({ line: "noise-2" });
+    users.insertOne({ name: "Margaret", role: "reader" });
+    // Rewrite Ada and Grace after Margaret exists, so their live offsets sit
+    // even further from each other and from Margaret's.
+    users.updateOne(ada, { $set: { role: "owner" } });
+    logs.insertOne({ line: "noise-3" });
+    users.updateOne(grace, { $set: { role: "owner" } });
+
+    users.createIndex("role", { type: "string" });
+    first.close();
+
+    const second = pocketDb({ path });
+    const loadedUsers = second.collection("users");
+
+    assert.deepEqual(loadedUsers.indexes, [{ field: "role", type: "string", unique: false }]);
+    assert.deepEqual(
+      loadedUsers.find({ role: "owner" }).toArray().map((document) => document.name).sort(),
+      ["Ada", "Grace"]
+    );
+    assert.deepEqual(
+      loadedUsers.find({ role: "reader" }).toArray().map((document) => document.name),
+      ["Margaret"]
+    );
+
+    second.close();
+  });
+
   it("does not append another operation when creating an existing index", () => {
     const path = join(createTempDirectory(), "test.pdb");
     const db = pocketDb({ path });
