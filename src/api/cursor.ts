@@ -20,6 +20,26 @@ export interface BulkRange {
   rangeStart: number;
 }
 
+/**
+ * Minimum number of candidates required before bulk-reading the candidate
+ * range into memory is worth its own cost at all. Below this threshold
+ * (e.g. findById, updateOne, deleteOne) the per-record readSync path is
+ * cheaper than a bulk range read regardless of `limit`.
+ */
+const SCAN_PRELOAD_THRESHOLD = 2;
+
+/**
+ * When a `limit` is set and the cursor is still deferring the bulk-range
+ * decision (see `resolveBulkRange`), this caps how many candidates get read
+ * one at a time before giving up on "the limit will be satisfied quickly"
+ * and falling back to a single bulk read for the rest. Bounds the worst case
+ * for a rare-match query under a small limit (e.g. a `findOne()` whose match
+ * is near the end of the candidate set, or missing entirely) to a fixed,
+ * small number of extra small reads instead of scanning the whole candidate
+ * set one record at a time.
+ */
+const MAX_PER_RECORD_READS_BEFORE_BULK_ESCALATION = 256;
+
 export class PocketCursor implements Cursor {
   private currentIndex = 0;
   private skippedMatches = 0;
@@ -32,14 +52,18 @@ export class PocketCursor implements Cursor {
   private sortedBuffer: Record<string, unknown>[] | null = null;
   private sortedIndex = 0;
 
+  // Lazy/adaptive bulk-range read state (see `resolveBulkRange`).
+  // `undefined` = not decided yet, `null` = decided against it (permanently,
+  // when below threshold; or for now, when deferred behind a `limit`).
+  private bulkRange: BulkRange | null | undefined = undefined;
+  private perRecordReadsSinceDeferred = 0;
+
   /**
-   * @param storage     File storage used for individual record reads (fallback).
+   * @param storage     File storage used for individual record reads, and to
+   *                    lazily compute a bulk range when it becomes worth it
+   *                    (see `resolveBulkRange`).
    * @param query       Compiled residual query evaluated against every candidate.
    * @param candidates  Snapshot of { id, offset } pairs captured at find() time.
-   * @param bulkRange   Optional pre-loaded byte range covering every candidate
-   *                    offset (see {@link FileStorage.readBulkRange}). When
-   *                    provided, all document reads are served from this range
-   *                    with zero additional syscalls.
    * @param encoder     Document encoder used to deserialize payload bytes.
    * @param cache       Optional hot-document cache. When `null` (the default,
    *                    i.e. caching disabled on the collection) the read path is
@@ -49,7 +73,6 @@ export class PocketCursor implements Cursor {
     private readonly storage: FileStorage,
     private readonly query: CompiledQuery,
     private readonly candidates: QueryCandidate[],
-    private readonly bulkRange: BulkRange | null = null,
     private readonly encoder: DocumentEncoder,
     private readonly cache: DocumentCache | null = null
   ) {}
@@ -69,7 +92,22 @@ export class PocketCursor implements Cursor {
       const candidate = this.candidates[this.currentIndex];
       this.currentIndex += 1;
 
-      const document = this.readCandidateDocument(candidate);
+      // No limit means we expect to eventually consume most/all candidates
+      // (toArray() with no limit(), or an unbounded iteration), so it's
+      // worth forcing the bulk read up front, same as the old eager
+      // behaviour. With a limit, defer — see `resolveBulkRange`.
+      const document = this.readCandidateDocument(candidate, this.limitCount === null);
+
+      if (this.bulkRange === undefined) {
+        // Still deferring: this read went through the per-record path.
+        // Escalate to a bulk read for the remainder if it's taking too long
+        // to satisfy the limit (see MAX_PER_RECORD_READS_BEFORE_BULK_ESCALATION).
+        this.perRecordReadsSinceDeferred += 1;
+
+        if (this.perRecordReadsSinceDeferred >= MAX_PER_RECORD_READS_BEFORE_BULK_ESCALATION) {
+          this.resolveBulkRange(true);
+        }
+      }
 
       if (!evaluateCompiledQuery(this.query, document as DocumentRecord)) {
         continue;
@@ -103,6 +141,9 @@ export class PocketCursor implements Cursor {
    *
    * Fast path: when the residual query is empty (match-all), returns
    * `candidates.length` with no document reads.
+   *
+   * Every candidate must be read regardless of `limit` (count() ignores it),
+   * so this always forces the bulk-range decision rather than deferring it.
    */
   count(): number {
     if (isMatchAll(this.query)) {
@@ -112,7 +153,7 @@ export class PocketCursor implements Cursor {
     let total = 0;
 
     for (const candidate of this.candidates) {
-      const document = this.readCandidateDocument(candidate);
+      const document = this.readCandidateDocument(candidate, true);
 
       if (evaluateCompiledQuery(this.query, document as DocumentRecord)) {
         total += 1;
@@ -203,13 +244,15 @@ export class PocketCursor implements Cursor {
 
   /**
    * Reads all candidates from disk (or bulk buffer) and filters them through
-   * the residual query. Used exclusively by the sorted path.
+   * the residual query. Used exclusively by the sorted path — sorting always
+   * needs every matching candidate up front regardless of `limit`, so this
+   * always forces the bulk-range decision rather than deferring it.
    */
   private collectAllMatching(): Record<string, unknown>[] {
     const results: Record<string, unknown>[] = [];
 
     for (const candidate of this.candidates) {
-      const document = this.readCandidateDocument(candidate);
+      const document = this.readCandidateDocument(candidate, true);
 
       if (evaluateCompiledQuery(this.query, document as DocumentRecord)) {
         results.push(document);
@@ -217,6 +260,53 @@ export class PocketCursor implements Cursor {
     }
 
     return results;
+  }
+
+  /**
+   * Decides whether to pre-load the candidate range into a single Buffer, and
+   * returns it if so — lazily and adaptively, unlike the old eager
+   * `Collection.find()`-time computation (see ADR 0018).
+   *
+   * The eager version paid for a bulk read sized to *every* candidate before
+   * the cursor knew whether the caller only wanted the first match — a
+   * `findOne()` (`find(query).limit(1)`) on a large, unindexed, high-match
+   * query paid the full-span cost for one document. Since `limit()` is only
+   * known once the caller has chained it onto the cursor returned by
+   * `find()`, that decision can't be made inside `find()` — only here, once
+   * `limitCount` is settled and the first candidate is actually about to be
+   * read.
+   *
+   * Decision, cached in `this.bulkRange` once made permanently:
+   * - Below `SCAN_PRELOAD_THRESHOLD` candidates: never worth it. Decided once,
+   *   permanently (`null`, cached).
+   * - No `limit` set, or `forceFullRead` (count()/sort() always need every
+   *   candidate regardless of limit): bulk-read everything now, same as the
+   *   old eager behaviour, just deferred to first read instead of at find()
+   *   time. Decided once, permanently.
+   * - A `limit` is set and this isn't a forced read: defer. Returns `null`
+   *   for *this* call without caching the decision, so per-record reads are
+   *   used instead — the common `findOne()` case never touches the rest of
+   *   the candidate span at all. `next()` tracks how many per-record reads
+   *   this costs and escalates to a full bulk read if the limit isn't being
+   *   satisfied quickly (see `MAX_PER_RECORD_READS_BEFORE_BULK_ESCALATION`),
+   *   bounding the worst case for a rare-match query under a small limit.
+   */
+  private resolveBulkRange(forceFullRead: boolean): BulkRange | null {
+    if (this.bulkRange !== undefined) {
+      return this.bulkRange;
+    }
+
+    if (this.candidates.length < SCAN_PRELOAD_THRESHOLD) {
+      this.bulkRange = null;
+      return null;
+    }
+
+    if (!forceFullRead && this.limitCount !== null) {
+      return null;
+    }
+
+    this.bulkRange = this.storage.readBulkRange(this.candidates.map((candidate) => candidate.offset));
+    return this.bulkRange;
   }
 
   /**
@@ -233,8 +323,12 @@ export class PocketCursor implements Cursor {
    *
    * When no cache is present this is the original read-and-decode path with zero
    * added overhead.
+   *
+   * @param forceFullRead Forces `resolveBulkRange` to make (or reuse) its
+   *                       permanent bulk-read decision now instead of
+   *                       deferring behind a `limit` — see `resolveBulkRange`.
    */
-  private readCandidateDocument(candidate: QueryCandidate): Record<string, unknown> {
+  private readCandidateDocument(candidate: QueryCandidate, forceFullRead = false): Record<string, unknown> {
     if (this.cache !== null) {
       const cached = this.cache.get(candidate.id, candidate.offset);
 
@@ -243,8 +337,10 @@ export class PocketCursor implements Cursor {
       }
     }
 
-    const operation = this.bulkRange !== null
-      ? readOperationFromBuffer(this.bulkRange.buffer, candidate.offset - this.bulkRange.rangeStart)
+    const bulkRange = this.resolveBulkRange(forceFullRead);
+
+    const operation = bulkRange !== null
+      ? readOperationFromBuffer(bulkRange.buffer, candidate.offset - bulkRange.rangeStart)
       : this.storage.readOperationAtOffset(candidate.offset);
 
     if (!operation.identifier.equals(PUT_DOCUMENT_OPERATION)) {

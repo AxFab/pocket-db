@@ -42,15 +42,6 @@ import type {
 } from "./types.js";
 
 /**
- * Minimum number of candidates required before the cursor pre-loads the
- * candidate range into memory for zero-syscall document reads.
- *
- * Below this threshold (e.g. findById, updateOne, deleteOne) the existing
- * per-record readSync path is cheaper than a bulk range read.
- */
-const SCAN_PRELOAD_THRESHOLD = 2;
-
-/**
  * Default cap on the number of distinct values `distinct()` will collect
  * before throwing. Guards against unbounded memory growth when called on a
  * field that turns out to be high-cardinality (e.g. a free-text field or a
@@ -349,25 +340,17 @@ export class PocketCollection implements Collection {
     const compiledQuery = compileQuery(query);
     const plan = this.indexManager.plan(compiledQuery, this.primaryIndex);
 
-    // Pre-load the byte range spanning the candidate set into a single Buffer
-    // when there are enough candidates to justify the cost. This reduces N×3
-    // individual readSync syscalls (one per candidate: header, payload,
-    // CRC32) down to two (one small header peek + one range read), at the
-    // cost of holding that range in memory for the lifetime of the cursor.
-    // Only the span the candidates actually occupy is read — not the whole
-    // file — see `FileStorage.readBulkRange`.
-    //
-    // For single-document lookups (findById, updateOne, deleteOne) the
-    // per-record path is cheaper, so we only pre-load above the threshold.
-    const bulkRange = plan.candidates.length >= SCAN_PRELOAD_THRESHOLD
-      ? this.storage.readBulkRange(plan.candidates.map((candidate) => candidate.offset))
-      : null;
-
+    // The bulk-range pre-load that used to happen here unconditionally (see
+    // git history / ADR 0016) has moved into `PocketCursor` itself and is now
+    // lazy: whether it's worth reading the whole candidate span in one shot
+    // depends on `limit()`, which callers like `findOne()` only set *after*
+    // `find()` returns (`find(query).limit(1)`) — so `find()` can no longer
+    // make that call itself. See `PocketCursor`'s `resolveBulkRange` for the
+    // deferred decision and ADR 0018.
     return new PocketCursor(
       this.storage,
       plan.residualQuery,
       plan.candidates,
-      bulkRange,
       this.encoder,
       this.cache
     );
