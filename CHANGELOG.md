@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.5] — 2026-08-02
+## [0.1.5] — 2026-08-15
 
 ### Fixed
 
@@ -21,6 +21,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `unique: false`, matching the documented default — when the current layout doesn't
   validate. Existing `.pdb` files with indexes created on 0.1.0–0.1.3 now open normally
   again; no migration or `compact()` is required.
+- **`open()` could be OOM-killed on large databases** — replay of the operation log read
+  the entire file into a single in-memory `Buffer` before processing any record; a ~1.9GB
+  `.pdb` file OOM-killed `open()` on a 3.8GB-RAM machine, and `stats()`/`compact()` shared
+  the same code path. Replay now streams the log through a bounded sliding window
+  (`FileStorage.readOperations()`, 8MiB default, `DEFAULT_REPLAY_CHUNK_BYTES`), so peak
+  memory during `open()`/`stats()`/`compact()` is a small multiple of the window size
+  instead of the file size. See [ADR 0017](docs/adr/0017-streaming-replay-buffer.md).
+- **Multi-candidate reads pre-loaded the whole file** — any `find()` returning ≥ 2
+  candidates, and rebuilding a secondary index on an already-populated collection
+  (`createIndex()`, or replaying an `idx1` record for a collection that already had
+  documents), read the *entire* database file into memory regardless of how few
+  documents were actually needed. Reads are now bounded to the minimum contiguous byte
+  range that covers the candidates involved (`FileStorage.readBulkRange`), so a query or
+  index rebuild against a large database only pays for the span its candidates occupy.
+  See [ADR 0016](docs/adr/0016-bounded-candidate-range-read.md).
+- **`skip()` read and decoded every skipped document one at a time** — on a match-all
+  query, `skip(N)` used to read and discard `N` documents individually before yielding
+  the first result. It now jumps `currentIndex` straight past them with zero reads when
+  the residual query is match-all; a non-match-all query still evaluates each candidate,
+  since `skip` counts *matching* documents.
+- **`findOne()`/`find().limit(N)` paid for a full bulk read meant for the whole candidate
+  set** — the multi-candidate fix above made `find()` eagerly bulk-read the entire
+  candidate span before returning the cursor, so a `findOne()` (`find(query).limit(1)`)
+  on a large, unindexed, high-match-rate query paid that same full-span cost just to
+  return one document. The bulk-range decision is now made lazily, on the first candidate
+  read, and deferred behind an active `limit`: below 2 candidates it's skipped entirely
+  (as before); with no `limit` set the whole span is still read up front; with a `limit`
+  set, candidates are read one at a time instead, escalating to a single bulk read only
+  if 256 per-record reads (`MAX_PER_RECORD_READS_BEFORE_BULK_ESCALATION`) go by without
+  satisfying the limit. `count()` and the sorted path always force the full bulk read
+  regardless of `limit`, since both need every candidate anyway. See
+  [ADR 0018](docs/adr/0018-lazy-bulk-read-by-limit.md).
+
+### Tooling
+
+- **Large-scale benchmark utility** (`benchmarks/large-scale.ts`, `npm run bench:large`)
+  — measures pocket-db alone against real, multi-hundred-megabyte to multi-gigabyte
+  `.pdb` files: replay time at `open()`, index rebuild cost, `stats()` scan time, and
+  worst-case unindexed lookups. Read-only by default (mutates only the `.lock` file);
+  `--rebuild-indexes` opts into additionally measuring index rebuild cost by dropping and
+  recreating every existing index against a copy. Building it is what surfaced the two
+  large-database memory issues fixed above.
+- **`npm run bench -- --runs=N`** — re-runs the full benchmark suite (setup → every case →
+  teardown, per adapter) `N` times and reports the median ops/sec per case, with the
+  min/max spread shown alongside it, so a single GC pause or OS scheduling blip no longer
+  skews the reported number the way a `--runs=1` sample can. Defaults to `1` (previous
+  single-sample behaviour) when omitted.
+
+### Documentation
+
+- Added [docs/adr/](docs/adr/README.md), a set of Architecture Decision Records:
+  - 13 retroactive records (0001–0013), Accepted, documenting existing decisions:
+    append-only storage, the binary file format, replay-based startup, cursor snapshot
+    semantics, the transaction envelope, secondary-indexing strategy, unique-constraint
+    checks, the optional document cache, in-place compaction, the single-process file
+    lock, the ESM/CJS build, synchronous writes, and the ObjectId format.
+  - 3 new records (0016–0018), Accepted, for the read-path fixes above: bounded
+    candidate-range reads, the streaming replay buffer, and the lazy/adaptive bulk-range
+    read keyed on `limit`.
+  - 2 new records (0014–0015), Proposed and **not yet implemented**: cloning the live
+    data set to a new file for backups, and lock-free readonly sessions coexisting with a
+    single writer via a sidecar generation counter.
+- `CLAUDE.md` and [docs/storage.md](docs/storage.md) updated to describe the bounded-range
+  read and streaming-replay behaviour.
 
 ---
 

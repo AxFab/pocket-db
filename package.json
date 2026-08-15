@@ -1,6 +1,6 @@
 {
   "name": "@axfab/pocket-db",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "An embedded document database for Node.js, designed around a small file-backed storage engine.",
   "type": "module",
   "main": "./dist/cjs/index.js",
