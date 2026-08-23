@@ -93,6 +93,18 @@ export interface Database {
   existsCollection(name: string): boolean;
 
   /**
+   * `true` if `open()` discovered and discarded an incomplete or corrupt
+   * trailing record in the database file — evidence that a previous process
+   * crashed mid-write. When this happens the file is truncated back to its
+   * last valid record and opened normally; nothing else is at risk, since
+   * only the very last record in the file is ever treated this way. `false`
+   * on a clean open, including every open after the one that performed the
+   * recovery. See `docs/storage.md`'s Corruption Policy and
+   * [ADR 0019](https://github.com/AxFab/pocket-db/blob/main/docs/adr/0019-torn-tail-recovery-on-open.md).
+   */
+  readonly recovered: boolean;
+
+  /**
    * Returns database-wide usage statistics: file size, live document count,
    * total/dead operation counts, and the number of bytes a {@link compact}
    * would reclaim.

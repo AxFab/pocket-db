@@ -27,6 +27,8 @@ export const DEFAULT_REPLAY_CHUNK_BYTES = 8 * 1024 * 1024;
 
 export class FileStorage {
   private currentOffset: number;
+  private tornTailRecovered = false;
+  private tornTailBytes = 0;
 
   private constructor(
     private readonly fd: number,
@@ -45,6 +47,29 @@ export class FileStorage {
    */
   get size(): number {
     return this.currentOffset;
+  }
+
+  /**
+   * `true` once {@link readOperations} has discarded an incomplete or
+   * corrupt trailing record — evidence that a process crashed mid-append on
+   * a previous run (see [ADR 0019](../../docs/adr/0019-torn-tail-recovery-on-open.md)
+   * and `docs/storage.md`'s Corruption Policy). This can only become `true`
+   * during the very first replay pass after `open()` (`PocketDatabase`'s
+   * constructor calling `loadCollections()`): that pass truncates the file
+   * to its last valid record, so every later `readOperations()` call in the
+   * same process (from `stats()`/`compact()`) runs against an already-clean
+   * file and never trips this path again.
+   */
+  get recovered(): boolean {
+    return this.tornTailRecovered;
+  }
+
+  /**
+   * Number of trailing bytes discarded by the recovery described above.
+   * `0` when {@link recovered} is `false`.
+   */
+  get recoveredBytes(): number {
+    return this.tornTailBytes;
   }
 
   /**
@@ -216,6 +241,20 @@ export class FileStorage {
    * size) — see `docs/adr/0016-bounded-candidate-range-read.md`'s sibling
    * decision on bounded replay memory.
    *
+   * **Torn-tail recovery.** If the log ends with an incomplete record — too
+   * few bytes for even a header, or a declared length that runs past the end
+   * of the file — that is treated as a crash mid-`appendOperation` on a
+   * previous run rather than an error: the file is truncated back to the
+   * last valid record (via {@link truncateTo}) and the generator ends
+   * cleanly, as if that had always been the end of the log. A CRC32 mismatch
+   * on a record whose full declared length *is* present gets the same
+   * treatment only when nothing valid follows it (relaxed durability can
+   * leave a trailing record's bytes zero-filled or partially flushed after a
+   * power loss even though the file's apparent length already covers it).
+   * {@link recovered}/{@link recoveredBytes} report whether this happened.
+   * A CRC mismatch on a record that is *not* the last one in the file is left
+   * to throw — see [ADR 0019](../../docs/adr/0019-torn-tail-recovery-on-open.md).
+   *
    * Every current consumer (`loadCollections`, `computeStorageStats`,
    * `compact`) already iterates with a plain `for...of` and never relied on
    * random access or `.length`, so this generator is a drop-in replacement
@@ -249,22 +288,51 @@ export class FileStorage {
     while (true) {
       if (!fill(OPERATION_HEADER_BYTES)) {
         if (window.length === 0) break;
-        throw new Error("Invalid operation record: unexpected end of file.");
+        this.recoverTornTail(fileOffset, end);
+        return;
       }
 
       const payloadLength = window.readUInt32BE(OPERATION_IDENTIFIER_BYTES);
       const recordLength = OPERATION_HEADER_BYTES + payloadLength + OPERATION_CRC32_BYTES;
 
       if (!fill(recordLength)) {
-        throw new Error("Invalid operation record: unexpected end of file.");
+        this.recoverTornTail(fileOffset, end);
+        return;
       }
 
-      const operation = readOperationFromBuffer(window, 0);
+      let operation: OperationRecord & { byteLength: number };
+
+      try {
+        operation = readOperationFromBuffer(window, 0);
+      } catch (err) {
+        // The record's full declared length made it to disk, but decoding it
+        // failed (CRC32 mismatch) — still a torn write if it is the very
+        // last record in the file, per the recovery scope documented above.
+        if (fileOffset + recordLength >= end) {
+          this.recoverTornTail(fileOffset, end);
+          return;
+        }
+        throw err;
+      }
+
       yield { ...operation, offset: fileOffset };
 
       fileOffset += recordLength;
       window = window.subarray(recordLength);
     }
+  }
+
+  /**
+   * Discards an incomplete or corrupt trailing record by truncating the file
+   * back to `validOffset` (the offset the bad record started at — i.e. the
+   * end of the last known-good record), and records that a recovery
+   * happened. Only ever called from {@link readOperations} for a record at
+   * the true end of the file, so nothing valid after it is ever at risk.
+   */
+  private recoverTornTail(validOffset: number, priorEnd: number): void {
+    this.truncateTo(validOffset);
+    this.tornTailRecovered = true;
+    this.tornTailBytes = priorEnd - validOffset;
   }
 }
 

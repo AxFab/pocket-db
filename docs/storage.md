@@ -31,9 +31,14 @@ crash: either all operations in a batch are visible or none are.
 
 Replay fails hard if:
 - a document or index operation references an unknown collection id;
-- a CRC32 checksum does not match;
+- a CRC32 checksum does not match on a record that is *not* the last one in
+  the file;
 - a `txnb` appears while a transaction is already open;
 - a `txnc` appears with no preceding `txnb`.
+
+The one exception is the trailing record: an incomplete or CRC-invalid record
+at the true end of the file is recovered automatically rather than failing —
+see Corruption Policy below.
 
 Replay reads the log through a bounded sliding window (`FileStorage.readOperations()`,
 default 8MiB), not by loading the whole file into memory at once — peak memory
@@ -79,20 +84,34 @@ records in a given file use the same format — formats are never mixed.
 
 ## Corruption Policy
 
-The intended first-version recovery policy is:
+**Torn-tail recovery (implemented).** A crash mid-`appendOperation` leaves the
+last record in the file incomplete — too few bytes for even its header, a
+declared length that runs past the end of the file, or (with `durability:
+"relaxed"`) a full-length record whose bytes were never fully flushed before a
+power loss, so its CRC32 check fails. `FileStorage.readOperations()` detects
+all three cases *only when nothing valid follows the bad record* — i.e. it is
+genuinely the last thing in the file — and treats them as a torn write rather
+than an error: the file is truncated back to the last valid record (via
+`FileStorage.truncateTo()`) and replay continues as if that had always been
+the end of the log. This happens automatically on the very first replay pass
+after `open()`; `stats()`/`compact()` never see a torn tail, since `open()`
+already cleaned it up.
 
-- if the last operation is truncated, ignore it, truncate the file to the last
-  valid offset, emit a warning, and mark the database instance as recovered;
-- if a CRC check fails or a payload is invalid, follow the `pocketDb()` corruption
-  option:
-  - `warn`: ignore the invalid operation when this can be done safely;
-  - `fail`: close the database and throw;
-  - `repair`: attempt to truncate or rebuild from the last known valid point.
+`Database.recovered` is `true` after such a recovery, `false` on a clean open
+(including every open after the one that performed the recovery), so callers
+can log or surface it. `open()` itself also emits a `console.warn` naming the
+file and the number of bytes discarded. See
+[ADR 0019](adr/0019-torn-tail-recovery-on-open.md).
 
-The recovered flag should be visible on the database instance so compaction can
-make conservative choices after a damaged tail was found.
-
-Neither truncation recovery nor the corruption option are implemented yet.
+**Mid-log corruption (not implemented).** A CRC32 mismatch on a record that is
+*not* the last one in the file — a bad sector, a manually edited byte, bit rot
+— is a different, harder problem: silently discarding it could drop or
+misplace live data in ways a trailing-record truncation cannot, since records
+after it may still reference state it established. This still fails hard
+(`open()`/`stats()`/`compact()` throw) rather than attempting a repair. A
+configurable `corruption: "warn" | "fail" | "repair"` policy for this broader
+case, and a general-purpose repair mode, remain unimplemented and are tracked
+as future work.
 
 ## Durability
 

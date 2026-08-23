@@ -1,7 +1,7 @@
 {
   "name": "@axfab/pocket-db",
   "version": "0.1.5",
-  "description": "An embedded document database for Node.js, designed around a small file-backed storage engine.",
+  "description": "Embedded, single-file NoSQL database for Node.js: append-only crash-safe writes (never a full-file rewrite), disk-backed with only indexes held in memory, zero native dependencies, MongoDB-style API.",
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/index.js",
@@ -19,6 +19,7 @@
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE",
+    "llms.txt",
     "benchmarks/RESULTS.md"
   ],
   "scripts": {
@@ -42,7 +43,9 @@
     "nosql",
     "typescript",
     "document-store",
-    "append-only"
+    "append-only",
+    "crash-safe",
+    "single-file"
   ],
   "license": "MIT",
   "homepage": "https://pocket-db.axfab.net/",

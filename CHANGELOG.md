@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`Database.recovered`** — `true` when `open()` discovered and recovered from
+  an incomplete or corrupt trailing record in the database file (see Fixed,
+  below); `false` on an ordinary clean open. Lets callers log or surface that
+  a previous run crashed mid-write.
+
+### Fixed
+
+- **A crash mid-write could make the whole database permanently unopenable** —
+  `open()` previously threw on any incomplete or CRC-invalid record, including
+  the one, unavoidable case an append-only, crash-oriented design should
+  survive by construction: a process killed mid-`appendOperation`, which can
+  only ever leave the *last* record in the file torn. That single trailing
+  record was enough to make every document in the file permanently
+  inaccessible. `FileStorage.readOperations()` now detects a torn or corrupt
+  trailing record — too short a header, a declared length past the end of the
+  file, or a CRC32 mismatch on a record nothing else follows — and recovers
+  automatically: the file is truncated back to its last valid record and
+  `open()` proceeds normally, discarding only the one unfinished write.
+  Corruption that is *not* on the trailing record (valid records both before
+  and after it) is left untouched and still fails `open()`/`stats()`/`compact()`
+  hard, since silently discarding it could drop or misplace live data in a way
+  a pure tail-truncation cannot. See
+  [ADR 0019](docs/adr/0019-torn-tail-recovery-on-open.md) and
+  [docs/storage.md](docs/storage.md#corruption-policy)'s Corruption Policy.
+
 ## [0.1.5] — 2026-08-15
 
 ### Fixed

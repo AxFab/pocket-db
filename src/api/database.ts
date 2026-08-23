@@ -37,6 +37,24 @@ export class PocketDatabase implements Database {
     private readonly encoder: DocumentEncoder
   ) {
     this.loadCollections();
+
+    if (this.storage.recovered) {
+      // A previous process crashed mid-append: the trailing record was
+      // incomplete or failed its CRC check, and loadCollections() above
+      // (via FileStorage.readOperations()) already truncated the file back
+      // to its last valid record before replaying it. This is a deliberate,
+      // operator-facing warning, not a debug log — see
+      // docs/storage.md's Corruption Policy and ADR 0019.
+      console.warn(
+        `pocket-db: recovered from an incomplete trailing record in "${this.storage.path}" ` +
+        `(${this.storage.recoveredBytes} byte(s) discarded, most likely a crash mid-write). ` +
+        `The file was truncated to its last valid record and opened normally.`
+      );
+    }
+  }
+
+  get recovered(): boolean {
+    return this.storage.recovered;
   }
 
   getCollections(): string[] {

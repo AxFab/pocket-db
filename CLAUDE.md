@@ -95,7 +95,7 @@ When `open()` is called, `PocketDatabase` reads every operation record sequentia
 - `txnb`/`txnc` → transaction envelope: operations between begin and commit are buffered and only applied when commit is found. If the log ends before `txnc`, the buffered operations are silently discarded (crash-safe atomic replay for batch methods).
 - `hol0` → silently skipped.
 
-Replay fails hard if an operation references an unknown collection, or if a CRC check fails. Corruption handling and truncation recovery are planned but not yet implemented (see `docs/storage.md`).
+Replay fails hard if an operation references an unknown collection, or if a CRC check fails on a record that is not the last one in the file. An incomplete or CRC-invalid **trailing** record (evidence of a crash mid-`appendOperation`) is instead recovered automatically: `FileStorage.readOperations()` truncates the file back to the last valid record and replay continues, and `Database.recovered` reports whether this happened (see [ADR 0019](docs/adr/0019-torn-tail-recovery-on-open.md)). Corruption in the middle of the log, and a configurable `corruption` policy for that case, remain unimplemented (see `docs/storage.md`).
 
 Replay reads the log through `FileStorage.readOperations()`'s bounded sliding window (not a whole-file buffer — see the Bulk-read/Streaming replay notes above), so `open()`'s peak memory is a small multiple of the window size regardless of file size. `idx1` mid-log (an index created after a collection already had documents) triggers `rebuildIndex()`, which reads every existing document via one `readBulkRange()` call — this, multiplied across every index on a large, already-populated database, is the dominant cost `docs/adr/0003-replay-based-startup.md` documents as `open()`'s O(documents × indexes) scaling.
 
@@ -285,6 +285,7 @@ pocketDb("./data.pdb")
 - **Missing values sort at minimum.** `null`, `undefined`, and `NaN` rank below all typed values. With direction applied: first in ascending, last in descending.
 - **The document cache is off by default and free when off.** No `DocumentCache` is instantiated until `enableCache()`; the read/write paths only pay a `null` check. It is keyed by id and versioned by offset, so it never violates cursor-snapshot semantics, and it stays correct across updates/deletes/compaction.
 - **Unique constraints are checked before the append, never after.** Because writes cannot be rolled back once appended, `assertUnique`/`assertUniqueBatch` run against the fully-built document ahead of `appendPutDocument`. A rejected `insertMany`/`updateMany` batch writes nothing at all.
+- **A torn trailing record is recovered automatically, not treated as corruption.** `open()`'s replay pass (`FileStorage.readOperations()`) discards an incomplete or CRC-invalid record only when it is the last one in the file — evidence of a crash mid-`appendOperation` — truncating back to the last valid record before continuing. `Database.recovered` reports whether this happened. A CRC mismatch on a record that is *not* the last one in the file still fails hard; see [ADR 0019](docs/adr/0019-torn-tail-recovery-on-open.md).
 
 ## Current Development Status
 
@@ -311,6 +312,7 @@ pocketDb("./data.pdb")
 - `Database.stats()` / `Collection.stats()` (size on disk, document/operation/tombstone counts, reclaimable bytes)
 - Optional hot-document cache: `Collection.enableCache()` / `disableCache()` / `cacheStats()` (off by default, id-keyed + offset-versioned LRU)
 - `durability: "strict" | "relaxed"` option in `OpenOptions` (fsync after every write vs. OS page cache)
+- Automatic torn-tail recovery on `open()` (`Database.recovered`) — a crash mid-write no longer makes the database unopenable; see [ADR 0019](docs/adr/0019-torn-tail-recovery-on-open.md)
 - Clean public API surface and TypeScript exports
 - Benchmarks vs. SQLite (in-memory and file-backed), JSON file, lowdb, and LokiJS, plus a cache vs. no-cache `pocket-db` comparison
 - Large-scale, real-data benchmark (`benchmarks/large-scale.ts`, `npm run bench:large`) — read-only by default; `--rebuild-indexes` opt-in measures index rebuild cost against a copy

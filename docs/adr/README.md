@@ -23,6 +23,7 @@ made, and what they trade off against.
 | [0016](0016-bounded-candidate-range-read.md) | Multi-Candidate Reads Are Bounded to the Candidate Range, Not the Whole File | Accepted |
 | [0017](0017-streaming-replay-buffer.md) | Replay Reads the Log Through a Bounded Sliding Window, Not One Whole-File Buffer | Accepted |
 | [0018](0018-lazy-bulk-read-by-limit.md) | The Bulk-Range Read Is Deferred Until `limit` Is Known, With a Bounded Per-Record Fallback | Accepted |
+| [0019](0019-torn-tail-recovery-on-open.md) | Torn-Tail Recovery on Open, Scoped Strictly to the Trailing Record | Accepted |
 
 See also the spec-level docs these ADRs reference: [storage.md](../storage.md),
 [file-format.md](../file-format.md), [indexes.md](../indexes.md),

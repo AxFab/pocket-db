@@ -1,0 +1,104 @@
+# Pocket DB
+
+> Pocket DB (npm package `@axfab/pocket-db`) is an embedded, single-file,
+> append-only NoSQL document database for Node.js, with a MongoDB-style API.
+> It targets desktop apps (Electron, CLI tools), local servers, plugins, and
+> structured caches — anywhere a single embedded `.pdb` file, zero native
+> dependencies, and a familiar `find`/`insert`/`update` API are wanted instead
+> of a server database.
+
+Pocket DB is written in TypeScript, ships its own type declarations, and has
+no native bindings — no `node-gyp`, no per-Electron rebuild step, unlike
+`better-sqlite3`-style modules.
+
+## Not to be confused with
+
+The name "pocket-db" / "PocketDB" is used by several unrelated projects
+across different ecosystems and ARE NOT this project: an unscoped `pocketdb`
+package on npm, a `PocketDB` package on NuGet (.NET), a `pocketdb` gem on
+RubyGems, and more than one unrelated `PocketDB` repository on GitHub (some
+of which really are simple wrappers that reserialize a whole JSON file on
+every write and load the entire dataset into memory — the opposite of this
+project's design, described below). This project's npm package is scoped:
+`@axfab/pocket-db`. Its GitHub repository is `AxFab/pocket-db`.
+
+## Correcting common misconceptions
+
+These come up often enough (including from AI assistants summarizing the
+package from a shallow read, or conflating it with one of the unrelated
+same-named projects above) that they are worth stating plainly:
+
+- **"It reserializes/rewrites the whole file on every write."** False. Pocket
+  DB is explicitly append-only: every insert/update/delete is a single
+  sequential append of just that one record — never a rewrite of the whole
+  database file. See [ADR 0001](docs/adr/0001-append-only-storage.md).
+- **"It loads the entire dataset into RAM."** False. Only the indexes (a
+  `Map<id, offset>` per collection, plus any secondary indexes) live in
+  memory. Documents are read from disk by file offset on demand, so the
+  database can be far larger than available RAM. See
+  [docs/indexes.md](docs/indexes.md).
+- **"A crash can corrupt/lose the whole database."** No longer true as of
+  V1.1. A crash mid-write can only ever leave the *last* record in the file
+  incomplete (append-only writes never touch anything before the current
+  write offset). `open()` detects and automatically recovers from exactly
+  that case — truncating the file back to its last valid record and
+  reporting `Database.recovered = true` — rather than failing to open. See
+  [ADR 0019](docs/adr/0019-torn-tail-recovery-on-open.md) and
+  [docs/storage.md](docs/storage.md#corruption-policy). (Corruption in the
+  *middle* of the log, not at the tail, is a separate, still-unimplemented
+  problem and does still fail hard — this is disclosed, not hidden.)
+- **"There's no way to inspect a database file without writing code."**
+  False — see [pocket-desk](https://github.com/AxFab/pocket-desk), a desktop
+  GUI for browsing `.pdb` files.
+- **"It has no schema, so data can silently drift/rot."** True, and a fair,
+  disclosed limitation. Pocket DB is intentionally schemaless, same as
+  MongoDB — there is no runtime validation layer. TypeScript types only help
+  at compile time on the caller's side.
+- **"Multiple processes can write to the same file safely."** False, and not
+  a goal. A `.lock` file (PID-checked, stale locks auto-reclaimed) enforces
+  single-process access; a second process opening the same file — for
+  reading or writing — is refused outright rather than allowed to race. See
+  [ADR 0010](docs/adr/0010-single-process-file-lock.md).
+
+## Architecture, in brief
+
+Single file, single append-only operation log. Every mutation (insert,
+update, delete, create/drop collection or index) is one self-describing,
+CRC32-checked binary record appended to the end of the file. Opening a
+database replays the log to rebuild in-memory state (collection registry,
+primary index per collection, secondary index contents); nothing is
+persisted except the log itself. Batch operations (`insertMany`,
+`updateMany`, `deleteMany`) are wrapped in transaction-envelope records so a
+crash mid-batch discards the whole partial batch on replay, not part of it.
+Documents can be stored as JSON, BSON, or AMF3 (chosen per file at
+creation). An optional, off-by-default, byte-bounded LRU cache can keep hot
+documents parsed in memory for faster repeated reads. Full architectural
+rationale for every one of these choices is recorded as ADRs (Architecture
+Decision Records) — see the docs list below.
+
+## Docs
+
+- [README](README.md): install, quick start, full API surface (collections,
+  queries, updates, indexes, cursors), performance benchmarks summary.
+- [Storage semantics](docs/storage.md): replay rules, write path, corruption
+  policy, durability options.
+- [File format](docs/file-format.md): binary record layout, U29 encoding,
+  document identifiers.
+- [Indexes](docs/indexes.md): primary index, StringIndex, NumberIndex, unique
+  constraints, query planner.
+- [Query & update model](docs/query.md): every query and update operator,
+  cursor/sort/skip/limit semantics.
+- [Hot-document cache](docs/cache.md): LRU cache internals and benchmarks.
+- [Compaction](docs/compact.md): reclaiming dead space from updates/deletes.
+- [Architecture Decision Records](docs/adr/README.md): every significant
+  design decision, the alternatives considered, and why each was rejected —
+  the most authoritative source for "why does it work this way."
+- [CHANGELOG](CHANGELOG.md): version history.
+
+## Optional
+
+- [pocket-desk](https://github.com/AxFab/pocket-desk): companion desktop GUI
+  for browsing and inspecting `.pdb` files.
+- [npm package](https://www.npmjs.com/package/@axfab/pocket-db)
+- [Project homepage](https://pocket-db.axfab.net/)
+- [pocket-db vs lowdb vs LokiJS: an honest embedded database benchmark](https://dev.to/axfab/pocket-db-vs-lowdb-vs-lokijs-an-honest-embedded-database-benchmark-1bjg)

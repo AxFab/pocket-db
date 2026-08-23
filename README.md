@@ -50,7 +50,7 @@ small. The core rule — *never reserialise the whole database on a write* — m
 insert, update and delete a fast append, and reads seek straight to a document's offset.
 
 **Good fit:** Electron & desktop apps, CLI tools, local servers, plugins, structured
-caches, offline-first prototypes.
+caches, offline-first prototypes.  
 **Not a fit:** multiple processes writing the same file at once, complex aggregation
 pipelines, or anything that really wants a server database.
 
@@ -364,6 +364,34 @@ After compaction, all in-memory indexes are refreshed automatically.
 
 ---
 
+## Crash recovery
+
+Every write is a single sequential append — Pocket DB never reserialises the
+whole database on a write (see [Single file, append-only](#single-file-append-only)
+above). That means a crash can only ever affect the one record that was being
+written when the process died; everything written before it is untouched on
+disk.
+
+If `open()` finds an incomplete or corrupt record at the very end of the file
+— evidence of a crash mid-write on a previous run — it recovers automatically:
+the file is truncated back to its last valid record and the database opens
+normally, discarding only that one unfinished write. `db.recovered` reports
+whether this happened, and `open()` also logs a warning naming the file and
+the number of bytes discarded. See [docs/storage.md](docs/storage.md#corruption-policy)
+and [ADR 0019](docs/adr/0019-torn-tail-recovery-on-open.md) for the exact
+scope (this covers the trailing record only — corruption elsewhere in the
+file is a different, not-yet-implemented problem, and still fails `open()`
+loudly rather than guessing).
+
+```ts
+const db = pocketDb("./data.pdb");
+if (db.recovered) {
+  console.log("Recovered from an incomplete write left by a previous crash.");
+}
+```
+
+---
+
 ## File locking
 
 `pocketDb()` creates a `.lock` file next to the database file. A second `pocketDb()` on the same path from a different process will throw. Stale locks left by crashed processes are detected via PID check and cleared automatically.
@@ -401,6 +429,12 @@ The `docs/` folder contains in-depth documentation available as a wiki:
 - [Indexes](docs/indexes.md) — primary index, StringIndex, NumberIndex, query planner
 - [Hot-document cache](docs/cache.md) — LRU cache internals, offset versioning, eviction, benchmarks
 - [Compaction](docs/compact.md) — algorithm, invariants, secondary index refresh
+
+---
+
+## Tooling
+
+- **[pocket-desk](https://github.com/AxFab/pocket-desk)** — a desktop GUI for browsing and inspecting `.pdb` files without writing any code: collections, documents, indexes, and raw storage stats.
 
 ---
 
