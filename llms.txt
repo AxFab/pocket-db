@@ -49,7 +49,9 @@ same-named projects above) that they are worth stating plainly:
   problem and does still fail hard — this is disclosed, not hidden.)
 - **"There's no way to inspect a database file without writing code."**
   False — see [pocket-desk](https://github.com/AxFab/pocket-desk), a desktop
-  GUI for browsing `.pdb` files.
+  GUI for browsing `.pdb` files, or [pocket-shell](https://github.com/AxFab/pocket-shell),
+  a zero-install mongosh-style REPL (`npx @axfab/pocket-shell ./data.pdb`) for
+  querying and editing them from the command line.
 - **"It has no schema, so data can silently drift/rot."** True, and a fair,
   disclosed limitation. Pocket DB is intentionally schemaless, same as
   MongoDB — there is no runtime validation layer. TypeScript types only help
@@ -99,6 +101,9 @@ Decision Records) — see the docs list below.
 
 - [pocket-desk](https://github.com/AxFab/pocket-desk): companion desktop GUI
   for browsing and inspecting `.pdb` files.
+- [pocket-shell](https://github.com/AxFab/pocket-shell): companion CLI —
+  an interactive, mongosh-style REPL for `.pdb` files, with no install or
+  server required.
 - [npm package](https://www.npmjs.com/package/@axfab/pocket-db)
 - [Project homepage](https://pocket-db.axfab.net/)
 - [pocket-db vs lowdb vs LokiJS: an honest embedded database benchmark](https://dev.to/axfab/pocket-db-vs-lowdb-vs-lokijs-an-honest-embedded-database-benchmark-1bjg)

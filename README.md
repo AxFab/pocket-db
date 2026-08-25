@@ -435,6 +435,7 @@ The `docs/` folder contains in-depth documentation available as a wiki:
 ## Tooling
 
 - **[pocket-desk](https://github.com/AxFab/pocket-desk)** — a desktop GUI for browsing and inspecting `.pdb` files without writing any code: collections, documents, indexes, and raw storage stats.
+- **[pocket-shell](https://github.com/AxFab/pocket-shell)** — an interactive, mongosh-style REPL for `.pdb` files: zero install, zero server (`npx @axfab/pocket-shell ./data.pdb`). Full CRUD, index management, compaction, import/export, and a non-interactive `--eval` mode for scripting. A CLI alternative to pocket-desk's GUI.
 
 ---
 
